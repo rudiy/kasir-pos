@@ -1,2 +1,7 @@
 .env
 update-fitur-3.js
+
+# Sidecar WAL mode SQLite: berubah tiap transaksi dan isinya sudah di-checkpoint
+# ke database/kasir.db, jadi tidak perlu ikut versi git.
+database/*.db-wal
+database/*.db-shm
