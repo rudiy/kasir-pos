@@ -402,21 +402,25 @@ app.get('/stok', isManagerOrAdmin, (req, res) => {
     const branchId = getBranchScope(req);
     const branches = db.prepare('SELECT * FROM branches ORDER BY id ASC').all();
 
+    // Posisi stok dan riwayat selalu satu cabang saja, termasuk untuk Administrator:
+    // satu produk yang sama muncul dua kali dengan angka berbeda bikin kolom koreksi
+    // mudah salah isi. Cabang lain cukup dipilih lewat switcher di atas.
     const rows = db.prepare(`SELECT spb.product_id, spb.branch_id, spb.stock, spb.min_stock, spb.updated_at,
           p.name AS product_name, p.barcode, p.price_buy, p.price_sell, b.name AS branch_name,
           (CASE WHEN spb.stock <= spb.min_stock THEN 1 ELSE 0 END) AS is_low
         FROM stock_per_branch spb
         JOIN products p ON p.id = spb.product_id
         JOIN branches b ON b.id = spb.branch_id
-        WHERE p.is_active = 1` + (isAdminUser ? '' : ' AND spb.branch_id = ?') + ' ORDER BY is_low DESC, p.name ASC')
-        .all(...(isAdminUser ? [] : [user.branch_id || 1]));
+        WHERE p.is_active = 1 AND spb.branch_id = ? ORDER BY is_low DESC, p.name ASC`)
+        .all(branchId);
 
     const movements = db.prepare(`SELECT m.*, p.name AS product_name, b.name AS branch_name, u.name AS user_name
         FROM stock_movements m
         JOIN products p ON p.id = m.product_id
         JOIN branches b ON b.id = m.branch_id
-        LEFT JOIN users u ON u.id = m.user_id` + (isAdminUser ? '' : ' WHERE m.branch_id = ?') + ' ORDER BY m.id DESC LIMIT 60')
-        .all(...(isAdminUser ? [] : [user.branch_id || 1]));
+        LEFT JOIN users u ON u.id = m.user_id
+        WHERE m.branch_id = ? ORDER BY m.id DESC LIMIT 60`)
+        .all(branchId);
 
     const ringkasan = rows.reduce((acc, r) => {
         acc.totalUnits += r.stock;

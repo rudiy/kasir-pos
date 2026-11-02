@@ -6,11 +6,12 @@
   <div class='d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2'>
     <div>
       <h2 class='mb-0'>Laporan Stok</h2>
-      <small class='text-muted'>Posisi stok, barang menipis, dan riwayat pergerakan barang per cabang.</small>
+      <small class='text-muted'>Posisi stok, barang menipis, dan riwayat pergerakan untuk satu cabang saja — ganti cabang di kanan atas.</small>
     </div>
     <div class='d-flex gap-2'>
       <% if (isAdminUser) { %>
-        <select id='branchSwitcher' class='form-select form-select-sm'>
+        <label class='align-self-center text-muted small mb-0' for='branchSwitcher'>Cabang</label>
+        <select id='branchSwitcher' class='form-select form-select-sm' style='min-width:180px;'>
           <% branches.forEach(b => { %><option value='<%= b.id %>' <%= b.id === branchId ? "selected" : "" %>><%= b.name %></option><% }) %>
         </select>
       <% } %>
@@ -20,7 +21,7 @@
   <div class='row g-3 mb-3'>
     <div class='col-md-4'>
       <div class='card shadow-sm'><div class='card-body'>
-        <div class='text-muted small'>Total Unit <% if (isAdminUser) { %>(semua cabang)<% } else { %>(<%= activeBranch.name %>)<% } %></div>
+        <div class='text-muted small'>Total Unit — <%= activeBranch.name || 'Cabang' %></div>
         <div class='fs-3 fw-bold'><%= ringkasan.totalUnits %></div>
       </div></div>
     </div>
@@ -39,13 +40,12 @@
   </div>
 
   <div class='card shadow-sm mb-4'>
-    <div class='card-header bg-white fw-bold'><i class='bi bi-clipboard-check'></i> Posisi Stok</div>
+    <div class='card-header bg-white fw-bold'><i class='bi bi-clipboard-check'></i> Posisi Stok <small class='text-muted fw-normal'>— <%= activeBranch.name || 'Cabang' %></small></div>
     <div class='card-body table-responsive'>
       <table class='table table-hover align-middle'>
         <thead class='table-light'>
           <tr>
             <th>Produk</th>
-            <% if (isAdminUser) { %><th>Cabang</th><% } %>
             <th>Stok</th>
             <th>Min</th>
             <th>Status</th>
@@ -56,9 +56,8 @@
         </thead>
         <tbody>
           <% if (rows.length > 0) { rows.forEach(r => { %>
-            <tr>
+            <tr title='Koreksi ini hanya untuk <%= r.branch_name %>'>
               <td><strong><%= r.product_name %></strong><br><small class='text-muted'><code><%= r.barcode || '-' %></code></small></td>
-              <% if (isAdminUser) { %><td><span class='badge bg-secondary'><%= r.branch_name %></span></td><% } %>
               <td class='fw-bold'><%= r.stock %></td>
               <td><%= r.min_stock %></td>
               <td>
@@ -87,29 +86,28 @@
                 <% } else { %><small class='text-muted'>cabang lain</small><% } %>
               </td>
             </tr>
-          <% }) } else { %><tr><td colspan='8' class='text-center'>Belum ada data stok.</td></tr><% } %>
+          <% }) } else { %><tr><td colspan='7' class='text-center'>Belum ada data stok untuk cabang ini.</td></tr><% } %>
         </tbody>
       </table>
     </div>
   </div>
 
   <div class='card shadow-sm'>
-    <div class='card-header bg-white fw-bold'><i class='bi bi-clock-history'></i> Riwayat Pergerakan Stok <small class='text-muted fw-normal'>(60 terakhir)</small></div>
+    <div class='card-header bg-white fw-bold'><i class='bi bi-clock-history'></i> Riwayat Pergerakan Stok <small class='text-muted fw-normal'>— <%= activeBranch.name || 'Cabang' %> (60 terakhir)</small></div>
     <div class='card-body table-responsive'>
       <table class='table table-sm table-hover align-middle'>
-        <thead class='table-light'><tr><th>Waktu</th><th>Produk</th><th>Cabang</th><th>Jenis</th><th>Perubahan</th><th>Petugas</th><th>Keterangan</th></tr></thead>
+        <thead class='table-light'><tr><th>Waktu</th><th>Produk</th><th>Jenis</th><th>Perubahan</th><th>Petugas</th><th>Keterangan</th></tr></thead>
         <tbody>
           <% if (movements.length > 0) { movements.forEach(m => { %>
             <tr>
               <td><small><%= fmtWIB(m.date) %></small></td>
               <td><%= m.product_name %></td>
-              <td><%= m.branch_name %></td>
               <td><span class='badge <%= m.qty_delta >= 0 ? "bg-success" : "bg-danger" %>'><%= m.type %></span></td>
               <td class='fw-bold <%= m.qty_delta >= 0 ? "text-success" : "text-danger" %>'><%= m.qty_delta > 0 ? "+" + m.qty_delta : m.qty_delta %></td>
               <td><%= m.user_name || 'Sistem' %></td>
               <td><small class='text-muted'><%= m.note || '-' %><% if (m.ref_id) { %> <code>#<%= m.ref_id %></code><% } %></small></td>
             </tr>
-          <% }) } else { %><tr><td colspan='7' class='text-center'>Belum ada pergerakan stok tercatat.</td></tr><% } %>
+          <% }) } else { %><tr><td colspan='6' class='text-center'>Belum ada pergerakan stok tercatat di cabang ini.</td></tr><% } %>
         </tbody>
       </table>
     </div>
@@ -120,7 +118,7 @@
 const branchSwitcher = document.getElementById('branchSwitcher');
 if (branchSwitcher) {
     branchSwitcher.addEventListener('change', (e) => {
-        window.location.href = e.target.value === 'all' ? '/stok' : '/stok?branch_id=' + e.target.value;
+        window.location.href = '/stok?branch_id=' + e.target.value;
     });
 }
 </script>
