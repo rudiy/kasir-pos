@@ -1,0 +1,166 @@
+<%- include('../layouts/header') %>
+<div class='row g-0'>
+  <!-- Area Produk -->
+  <div class='col-md-8 p-3 bg-light'>
+    <input type='text' id='barcode-input' class='form-control mb-3 p-3 shadow-sm' placeholder='Scan Barcode atau Cari Produk (F2)...' autofocus>
+    <div class='row g-2' id='product-grid'>
+      <% products.forEach(p => { %>
+        <div class='col-md-3 col-6'>
+          <div class='card product-card h-100' onclick='addToCart(<%= JSON.stringify(p) %>)'>
+            <div class='card-body text-center p-2'>
+              <h6 class='card-title text-truncate'><%= p.name %></h6>
+              <p class='text-success fw-bold mb-0'>Rp <%= p.price_sell.toLocaleString('id-ID') %></p>
+              <small class='text-muted'>Stok: <%= p.stock %></small>
+            </div>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+  <!-- Area Keranjang (Cart) -->
+  <div class='col-md-4 pos-cart-panel d-flex flex-column'>
+    <div class='p-3 bg-white flex-grow-1' id='cart-items'>
+      <div class='text-center text-muted mt-5'>Keranjang Kosong</div>
+    </div>
+    <div class='p-3 bg-light border-top'>
+      <div class='d-flex justify-content-between mb-2'><strong>Total:</strong><strong class='fs-4 text-primary' id='cart-total'>Rp 0</strong></div>
+      <button class='btn btn-success w-100 py-3 fw-bold' onclick='showPaymentModal()'>BAYAR (F4)</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Pembayaran -->
+<div class='modal fade' id='paymentModal' tabindex='-1'>
+  <div class='modal-dialog'>
+    <div class='modal-content'>
+      <div class='modal-header'><h5 class='modal-title'>Pembayaran</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-body'>
+        <h3 class='text-center text-primary mb-3' id='modal-total'>Rp 0</h3>
+        
+        <div class='mb-2'>
+            <label>Pilih Voucher / Diskon</label>
+            <select id='voucher-select' class='form-select' onchange='applyVoucher()'>
+                <option value='0'>-- Tanpa Voucher --</option>
+                <% vouchers.forEach(v => { %>
+                    <option value='<%= v.value %>'><%= v.code %> (Potongan Rp <%= v.value.toLocaleString('id-ID') %>)</option>
+                <% }) %>
+            </select>
+        </div>
+
+        <div class='mb-3'>
+          <label>Metode Pembayaran</label>
+          <select id='payment-method' class='form-select'><option value='TUNAI'>Tunai</option><option value='QRIS'>QRIS</option><option value='DEBIT'>Debit</option></select>
+        </div>
+        <div class='mb-3'>
+          <label>Uang Diterima (Rp)</label>
+          <input type='number' id='payment-amount' class='form-control form-control-lg' oninput='calculateChange()'>
+        </div>
+        <div class='mb-3'>
+          <label>Kembalian</label>
+          <input type='text' id='payment-change' class='form-control form-control-lg fw-bold text-success' readonly>
+        </div>
+      </div>
+      <div class='modal-footer'><button class='btn btn-primary w-100' onclick='processCheckout()'>Proses & Cetak Struk</button></div>
+    </div>
+  </div>
+</div>
+
+<div id='print-area' style='display:none;'></div>
+
+<script>
+let cart = [];
+let cartTotal = 0;
+let finalTotal = 0;
+let discountVal = 0;
+const formatter = new Intl.NumberFormat('id-ID');
+
+function addToCart(product) {
+  const exist = cart.find(i => i.id === product.id);
+  if(exist) { if(exist.qty < product.stock) exist.qty++; else alert('Stok tidak cukup!'); }
+  else { cart.push({...product, qty: 1}); }
+  renderCart();
+}
+
+function updateQty(id, delta) {
+  const item = cart.find(i => i.id === id);
+  if(!item) return;
+  item.qty += delta;
+  if(item.qty <= 0) cart = cart.filter(i => i.id !== id);
+  renderCart();
+}
+
+function renderCart() {
+  const container = document.getElementById('cart-items');
+  cartTotal = 0;
+  if(cart.length === 0) { container.innerHTML = '<div class="text-center text-muted mt-5">Keranjang Kosong</div>'; document.getElementById('cart-total').innerText = 'Rp 0'; return; }
+  let html = '';
+  cart.forEach(item => {
+    const sub = item.qty * item.price_sell;
+    cartTotal += sub;
+    html += `<div class='d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom'>
+      <div><div class='fw-bold'>${item.name}</div><div class='text-muted small'>Rp ${formatter.format(item.price_sell)} x ${item.qty}</div></div>
+      <div class='text-end'><div class='fw-bold'>Rp ${formatter.format(sub)}</div>
+      <div class='btn-group btn-group-sm mt-1'><button class='btn btn-outline-secondary' onclick='updateQty(${item.id}, -1)'>-</button><button class='btn btn-outline-secondary' onclick='updateQty(${item.id}, 1)'>+</button></div></div>
+    </div>`;
+  });
+  container.innerHTML = html;
+  finalTotal = cartTotal;
+  document.getElementById('cart-total').innerText = 'Rp ' + formatter.format(cartTotal);
+}
+
+function applyVoucher() {
+    discountVal = parseFloat(document.getElementById('voucher-select').value) || 0;
+    finalTotal = Math.max(0, cartTotal - discountVal);
+    document.getElementById('modal-total').innerText = 'Rp ' + formatter.format(finalTotal);
+    calculateChange();
+}
+
+function showPaymentModal() {
+  if(cart.length === 0) return alert('Keranjang kosong!');
+  discountVal = 0;
+  finalTotal = cartTotal;
+  document.getElementById('voucher-select').value = '0';
+  document.getElementById('modal-total').innerText = 'Rp ' + formatter.format(cartTotal);
+  document.getElementById('payment-amount').value = '';
+  document.getElementById('payment-change').value = '';
+  new bootstrap.Modal(document.getElementById('paymentModal')).show();
+}
+
+function calculateChange() {
+  const amount = parseFloat(document.getElementById('payment-amount').value) || 0;
+  const change = amount - finalTotal;
+  document.getElementById('payment-change').value = change >= 0 ? 'Rp ' + formatter.format(change) : 'Uang Kurang';
+}
+
+async function processCheckout() {
+  const amount = parseFloat(document.getElementById('payment-amount').value) || 0;
+  if(amount < finalTotal && document.getElementById('payment-method').value === 'TUNAI') return alert('Uang pembayaran kurang!');
+  const payload = { cart: cart.map(i => ({id: i.id, qty: i.qty, price: i.price_sell})), paymentMethod: document.getElementById('payment-method').value, paymentAmount: amount, total: finalTotal };
+  const res = await fetch('/api/checkout', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if(data.success) { printReceipt(data.invoiceNo, amount); cart = []; renderCart(); bootstrap.Modal.getInstance(document.getElementById('paymentModal')).hide(); alert('Transaksi Berhasil!'); window.location.reload(); }
+  else { alert('Gagal: ' + data.error); }
+}
+
+function printReceipt(invoice, amount) {
+  const pa = document.getElementById('print-area');
+  pa.style.display = 'block';
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('id-ID') + ' ' + now.toLocaleTimeString('id-ID');
+  let h = `<div style='text-align:center; font-family:monospace; margin-bottom:5px;'><strong><%= settings.store_name %></strong><br><%= settings.address %><br>Telp: <%= settings.phone %><br><small>${dateStr}</small><br>No: ${invoice}</div><hr style='border-top:1px dashed #000;'>`;
+  cart.forEach(i => { h += `<div style='display:flex; justify-content:space-between;'><span>${i.name} (${i.qty})</span><span>${formatter.format(i.qty * i.price_sell)}</span></div>`; });
+  if(discountVal > 0) h += `<div style='display:flex; justify-content:space-between; color:red;'><span>Diskon</span><span>-${formatter.format(discountVal)}</span></div>`;
+  h += `<hr style='border-top:1px dashed #000;'><div style='display:flex; justify-content:space-between;'><strong>Total</strong><strong>${formatter.format(finalTotal)}</strong></div>`;
+  h += `<div style='display:flex; justify-content:space-between;'><span>Bayar</span><span>${formatter.format(amount)}</span></div>`;
+  h += `<div style='display:flex; justify-content:space-between;'><span>Kembali</span><span>${formatter.format(amount - finalTotal)}</span></div>`;
+  h += `<hr style='border-top:1px dashed #000;'><div style='text-align:center; font-size:10px;'><strong>NOTED:</strong><br>Barang yang sudah dibeli tidak bisa dikembalikan.<br>Terima Kasih!</div>`;
+  pa.innerHTML = h;
+  document.body.classList.add('print-receipt-mode');
+  window.print();
+  document.body.classList.remove('print-receipt-mode');
+  pa.style.display = 'none';
+}
+
+document.addEventListener('keydown', (e) => { if(e.key==='F2'){e.preventDefault(); document.getElementById('barcode-input').focus();} else if(e.key==='F4'){e.preventDefault(); showPaymentModal();} });
+</script>
+<%- include('../layouts/footer') %>

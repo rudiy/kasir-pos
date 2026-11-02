@@ -1,0 +1,114 @@
+<%- include('../layouts/header') %>
+<div class='p-4'>
+  <div class='d-flex justify-content-between mb-3'>
+    <h2>Data Produk</h2>
+    <button class='btn btn-primary' onclick='openAddProductModal()' style='background-color: var(--navy);'>+ Tambah Produk</button>
+  </div>
+  <div class='card shadow-sm'>
+    <div class='card-body table-responsive'>
+      <table class='table table-hover align-middle'>
+        <thead class='table-light'><tr><th>Barcode / SKU</th><th>Nama</th><th>Kategori</th><th>Harga Beli</th><th>Harga Jual</th><th>Stok</th><th class='text-center'>Aksi</th></tr></thead>
+        <tbody>
+          <% if(products.length > 0) { products.forEach(p => { %>
+            <tr>
+              <td><code><%= p.barcode || '-' %></code></td>
+              <td><strong><%= p.name %></strong></td>
+              <td><%= p.category || '-' %></td>
+              <td>Rp <%= p.price_buy.toLocaleString('id-ID') %></td>
+              <td>Rp <%= p.price_sell.toLocaleString('id-ID') %></td>
+              <td>
+                <span class='badge <%= p.stock <= p.min_stock ? "bg-danger" : "bg-success" %>'><%= p.stock %></span>
+              </td>
+              <td class='text-center'>
+                <button class='btn btn-sm btn-warning me-1' onclick='editProduct(<%= JSON.stringify(p) %>)'><i class='bi bi-pencil'></i></button>
+                <form action='/produk/delete' method='POST' class='d-inline' onsubmit='return confirm("Yakin ingin menghapus produk ini?")'>
+                  <input type='hidden' name='id' value='<%= p.id %>'>
+                  <button type='submit' class='btn btn-sm btn-danger'><i class='bi bi-trash'></i></button>
+                </form>
+              </td>
+            </tr>
+          <% }) } else { %><tr><td colspan='7' class='text-center'>Belum ada produk.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Tambah -->
+<div class='modal fade' id='modalAddProduct' tabindex='-1'>
+  <div class='modal-dialog'>
+    <form action='/produk/add' method='POST' class='modal-content'>
+      <div class='modal-header'><h5 class='modal-title'>Tambah Produk</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-body'>
+        <div class='mb-2'>
+          <label class='form-label'>Barcode / SKU <small class='text-muted'>(Auto / Bisa Diedit / Scan Barcode)</small></label>
+          <div class='input-group'>
+            <input type='text' name='barcode' id='add_product_barcode' class='form-control fw-bold' required placeholder='Scan barcode atau gunakan auto'>
+            <button class='btn btn-outline-secondary' type='button' onclick='generateProductBarcode()'><i class='bi bi-shuffle'></i> Acak</button>
+          </div>
+        </div>
+        <div class='mb-2'><label class='form-label'>Nama Produk</label><input type='text' name='name' class='form-control' required placeholder='Contoh: Kopi Kapal Api 165g'></div>
+        <div class='mb-2'><label class='form-label'>Kategori</label>
+          <select name='category_id' class='form-select'>
+            <% categories.forEach(c => { %><option value='<%= c.id %>'><%= c.name %></option><% }) %>
+          </select>
+        </div>
+        <div class='row'>
+            <div class='col-6 mb-2'><label class='form-label'>Harga Beli</label><input type='number' name='price_buy' class='form-control' required placeholder='0'></div>
+            <div class='col-6 mb-2'><label class='form-label'>Harga Jual</label><input type='number' name='price_sell' class='form-control' required placeholder='0'></div>
+        </div>
+        <div class='mb-2'><label class='form-label'>Stok Awal</label><input type='number' name='stock' class='form-control' required value='10'></div>
+      </div>
+      <div class='modal-footer'><button type='submit' class='btn btn-primary'>Simpan Produk</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Edit -->
+<div class='modal fade' id='modalEditProduct' tabindex='-1'>
+  <div class='modal-dialog'>
+    <form action='/produk/edit' method='POST' class='modal-content'>
+      <div class='modal-header'><h5 class='modal-title'>Edit Produk</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-body'>
+        <input type='hidden' name='id' id='edit_id'>
+        <div class='mb-2'><label class='form-label'>Barcode / SKU</label><input type='text' name='barcode' id='edit_barcode' class='form-control' required></div>
+        <div class='mb-2'><label class='form-label'>Nama Produk</label><input type='text' name='name' id='edit_name' class='form-control' required></div>
+        <div class='mb-2'><label class='form-label'>Kategori</label>
+          <select name='category_id' id='edit_category' class='form-select'>
+            <% categories.forEach(c => { %><option value='<%= c.id %>'><%= c.name %></option><% }) %>
+          </select>
+        </div>
+        <div class='row'>
+            <div class='col-6 mb-2'><label class='form-label'>Harga Beli</label><input type='number' name='price_buy' id='edit_price_buy' class='form-control' required></div>
+            <div class='col-6 mb-2'><label class='form-label'>Harga Jual</label><input type='number' name='price_sell' id='edit_price_sell' class='form-control' required></div>
+        </div>
+        <div class='mb-2'><label class='form-label'>Stok Awal</label><input type='number' name='stock' id='edit_stock' class='form-control' required></div>
+      </div>
+      <div class='modal-footer'><button type='submit' class='btn btn-warning'>Update Produk</button></div>
+    </form>
+  </div>
+</div>
+
+<script>
+function generateProductBarcode() {
+    const randomDigits = Math.floor(1000000000 + Math.random() * 9000000000);
+    document.getElementById('add_product_barcode').value = '899' + randomDigits;
+}
+
+function openAddProductModal() {
+    generateProductBarcode();
+    new bootstrap.Modal(document.getElementById('modalAddProduct')).show();
+}
+
+function editProduct(p) {
+    document.getElementById('edit_id').value = p.id;
+    document.getElementById('edit_barcode').value = p.barcode;
+    document.getElementById('edit_name').value = p.name;
+    document.getElementById('edit_category').value = p.category_id;
+    document.getElementById('edit_price_buy').value = p.price_buy;
+    document.getElementById('edit_price_sell').value = p.price_sell;
+    document.getElementById('edit_stock').value = p.stock;
+    new bootstrap.Modal(document.getElementById('modalEditProduct')).show();
+}
+</script>
+<%- include('../layouts/footer') %>

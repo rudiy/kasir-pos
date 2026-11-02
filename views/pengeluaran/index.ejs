@@ -1,0 +1,49 @@
+<%- include('../layouts/header') %>
+<div class='p-4'>
+  <div class='d-flex justify-content-between mb-3'>
+    <h2>Pengeluaran Operasional Toko</h2>
+    <button class='btn btn-primary' data-bs-toggle='modal' data-bs-target='#modalExp' style='background-color: var(--navy);'>+ Tambah Pengeluaran</button>
+  </div>
+  <div class='card shadow-sm'>
+    <div class='card-body table-responsive'>
+      <table class='table table-hover align-middle'>
+        <thead class='table-light'><tr><th>Tanggal</th><th>Nama Pengeluaran</th><th>Nominal (Rp)</th><th>Keterangan</th><th>Petugas</th><th class='text-center'>Aksi</th></tr></thead>
+        <tbody>
+          <% let totalExp = 0; if(expenses.length > 0) { expenses.forEach(e => { totalExp += e.amount; %>
+            <tr>
+              <td><%= new Date(e.date).toLocaleString('id-ID') %></td>
+              <td><strong><%= e.title %></strong></td>
+              <td class='text-danger fw-bold'>Rp <%= e.amount.toLocaleString('id-ID') %></td>
+              <td><%= e.notes || '-' %></td>
+              <td><%= e.user_name %></td>
+              <td class='text-center'>
+                <form action='/pengeluaran/delete' method='POST' class='d-inline' onsubmit='return confirm("Hapus data pengeluaran ini?")'>
+                  <input type='hidden' name='id' value='<%= e.id %>'>
+                  <button type='submit' class='btn btn-sm btn-danger'><i class='bi bi-trash'></i></button>
+                </form>
+              </td>
+            </tr>
+          <% }) } else { %><tr><td colspan='6' class='text-center'>Belum ada pengeluaran.</td></tr><% } %>
+        </tbody>
+        <% if(expenses.length > 0) { %>
+            <tfoot class='table-light fw-bold'><tr><td colspan='2' class='text-end'>TOTAL PENGELUARAN:</td><td class='text-danger'>Rp <%= totalExp.toLocaleString('id-ID') %></td><td colspan='3'></td></tr></tfoot>
+        <% } %>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class='modal fade' id='modalExp' tabindex='-1'>
+  <div class='modal-dialog'>
+    <form action='/pengeluaran/add' method='POST' class='modal-content'>
+      <div class='modal-header'><h5 class='modal-title'>Tambah Pengeluaran</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-body'>
+        <div class='mb-2'><label>Nama / Judul Pengeluaran</label><input type='text' name='title' class='form-control' required placeholder='Contoh: Bayar Listrik / Plastik Struk'></div>
+        <div class='mb-2'><label>Nominal (Rp)</label><input type='number' name='amount' class='form-control' required placeholder='0'></div>
+        <div class='mb-2'><label>Keterangan</label><textarea name='notes' class='form-control' rows='2'></textarea></div>
+      </div>
+      <div class='modal-footer'><button type='submit' class='btn btn-primary'>Simpan</button></div>
+    </form>
+  </div>
+</div>
+<%- include('../layouts/footer') %>

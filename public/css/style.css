@@ -1,0 +1,23 @@
+:root { --navy: #0F172A; --gold: #F59E0B; --green: #10B981; }
+body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
+.sidebar { background-color: var(--navy); min-height: 100vh; color: white; transition: all 0.3s ease; }
+.sidebar.hidden { margin-left: -250px; }
+.sidebar a { color: #cbd5e1; text-decoration: none; padding: 10px 15px; display: block; border-radius: 5px; }
+.sidebar a:hover { background-color: #1E293B; color: white; }
+.pos-cart-panel { background: white; border-left: 1px solid #e2e8f0; height: calc(100vh - 60px); overflow-y: auto; }
+.product-card { cursor: pointer; transition: transform 0.1s; }
+.product-card:hover { transform: scale(1.02); border-color: var(--gold); }
+
+@media print {
+  .sidebar, .btn, .no-print, form, .modal-header, .modal-footer, nav { display: none !important; }
+  .flex-grow-1 { margin: 0 !important; padding: 0 !important; width: 100% !important; height: auto !important; overflow: visible !important; }
+  body { background-color: white !important; color: black !important; }
+  .card { border: none !important; box-shadow: none !important; }
+  .table { width: 100% !important; border-collapse: collapse !important; }
+  .table th, .table td { border: 1px solid #333 !important; padding: 4px !important; font-size: 11px; }
+
+  /* Mode Cetak Struk Kasir / Struk Thermal Laporan (58mm) */
+  body.print-receipt-mode * { visibility: hidden !important; }
+  body.print-receipt-mode #print-area, body.print-receipt-mode #print-area * { visibility: visible !important; }
+  body.print-receipt-mode #print-area { position: absolute; left: 0; top: 0; width: 58mm; font-size: 11px; font-family: monospace; }
+}

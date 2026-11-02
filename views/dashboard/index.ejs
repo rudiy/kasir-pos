@@ -1,0 +1,61 @@
+<%- include('../layouts/header') %>
+<div class='p-4'>
+  <h2>Dashboard Overview</h2>
+  <p class='text-muted'>Selamat datang kembali, <strong><%= user.name %></strong> (<%= user.role %>)</p>
+  
+  <div class='row mt-4'>
+    <div class='col-md-4 mb-3'>
+      <div class='card bg-primary text-white shadow-sm h-100'>
+        <div class='card-body'>
+          <h5>Penjualan Hari Ini</h5>
+          <h3>Rp <%= salesToday.total ? salesToday.total.toLocaleString('id-ID') : 0 %></h3>
+          <small><%= salesToday.count %> Transaksi Terproses</small>
+        </div>
+      </div>
+    </div>
+
+    <% if(isAdmin) { %>
+    <!-- Kartu Khusus Super Admin / Pemilik -->
+    <div class='col-md-4 mb-3'>
+      <div class='card bg-danger text-white shadow-sm h-100'>
+        <div class='card-body'>
+          <h5>Pengeluaran Hari Ini</h5>
+          <h3>Rp <%= expToday.toLocaleString('id-ID') %></h3>
+          <small>Operasional Toko</small>
+        </div>
+      </div>
+    </div>
+    <div class='col-md-4 mb-3'>
+      <div class='card bg-success text-white shadow-sm h-100'>
+        <div class='card-body'>
+          <h5>Estimasi Laba Hari Ini</h5>
+          <h3>Rp <%= profitToday.toLocaleString('id-ID') %></h3>
+          <small>Omset - HPP - Pengeluaran</small>
+        </div>
+      </div>
+    </div>
+    <% } else { %>
+    <!-- Kartu Tambahan Kasir -->
+    <div class='col-md-4 mb-3'>
+      <div class='card bg-info text-dark shadow-sm h-100'>
+        <div class='card-body'>
+          <h5>Total Transaksi Kasir</h5>
+          <h3><%= salesToday.count %></h3>
+          <small>Transaksi sukses hari ini</small>
+        </div>
+      </div>
+    </div>
+    <% } %>
+
+    <div class='col-md-4 mb-3'>
+      <div class='card bg-dark text-white shadow-sm h-100'>
+        <div class='card-body'>
+          <h5>Jumlah Produk Aktif</h5>
+          <h3><%= productCount.count %> SKU</h3>
+          <small>Master Data Produk</small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<%- include('../layouts/footer') %>

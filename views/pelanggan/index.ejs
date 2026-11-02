@@ -1,0 +1,92 @@
+<%- include('../layouts/header') %>
+<div class='p-4'>
+  <div class='d-flex justify-content-between mb-3'>
+    <h2>Data Pelanggan</h2>
+    <button class='btn btn-primary' onclick='openAddCustomerModal()' style='background-color: var(--navy);'>+ Tambah Pelanggan</button>
+  </div>
+  <div class='card shadow-sm'>
+    <div class='card-body table-responsive'>
+      <table class='table table-hover align-middle'>
+        <thead class='table-light'><tr><th>Kode</th><th>Nama</th><th>Telepon</th><th>Alamat</th><th class='text-center'>Aksi</th></tr></thead>
+        <tbody>
+          <% if(customers.length > 0) { customers.forEach(c => { %>
+            <tr>
+              <td><span class='badge bg-secondary'><%= c.code || '-' %></span></td>
+              <td><strong><%= c.name %></strong></td>
+              <td><%= c.phone || '-' %></td>
+              <td><%= c.address || '-' %></td>
+              <td class='text-center'>
+                <button class='btn btn-sm btn-warning me-1' onclick='editCustomer(<%= JSON.stringify(c) %>)'><i class='bi bi-pencil'></i></button>
+                <form action='/pelanggan/delete' method='POST' class='d-inline' onsubmit='return confirm("Yakin ingin menghapus pelanggan ini?")'>
+                  <input type='hidden' name='id' value='<%= c.id %>'>
+                  <button type='submit' class='btn btn-sm btn-danger'><i class='bi bi-trash'></i></button>
+                </form>
+              </td>
+            </tr>
+          <% }) } else { %><tr><td colspan='5' class='text-center'>Belum ada pelanggan.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Tambah -->
+<div class='modal fade' id='modalAddCustomer' tabindex='-1'>
+  <div class='modal-dialog'>
+    <form action='/pelanggan/add' method='POST' class='modal-content'>
+      <div class='modal-header'><h5 class='modal-title'>Tambah Pelanggan</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-body'>
+        <div class='mb-2'>
+          <label class='form-label'>Kode Pelanggan <small class='text-muted'>(Otomatis / Bisa Diedit)</small></label>
+          <div class='input-group'>
+            <input type='text' name='code' id='add_customer_code' class='form-control fw-bold' required>
+            <button class='btn btn-outline-secondary' type='button' onclick='generateCustomerCode()'><i class='bi bi-shuffle'></i> Acak</button>
+          </div>
+        </div>
+        <div class='mb-2'><label class='form-label'>Nama Lengkap</label><input type='text' name='name' class='form-control' required placeholder='Contoh: Budi Santoso'></div>
+        <div class='mb-2'><label class='form-label'>No. Telepon</label><input type='text' name='phone' class='form-control' placeholder='0812...'></div>
+        <div class='mb-2'><label class='form-label'>Alamat</label><textarea name='address' class='form-control' rows='2'></textarea></div>
+      </div>
+      <div class='modal-footer'><button type='submit' class='btn btn-primary'>Simpan</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Edit -->
+<div class='modal fade' id='modalEditCustomer' tabindex='-1'>
+  <div class='modal-dialog'>
+    <form action='/pelanggan/edit' method='POST' class='modal-content'>
+      <div class='modal-header'><h5 class='modal-title'>Edit Pelanggan</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-body'>
+        <input type='hidden' name='id' id='edit_c_id'>
+        <div class='mb-2'><label class='form-label'>Kode Pelanggan</label><input type='text' name='code' id='edit_c_code' class='form-control' required></div>
+        <div class='mb-2'><label class='form-label'>Nama Lengkap</label><input type='text' name='name' id='edit_c_name' class='form-control' required></div>
+        <div class='mb-2'><label class='form-label'>No. Telepon</label><input type='text' name='phone' id='edit_c_phone' class='form-control'></div>
+        <div class='mb-2'><label class='form-label'>Alamat</label><textarea name='address' id='edit_c_address' class='form-control' rows='2'></textarea></div>
+      </div>
+      <div class='modal-footer'><button type='submit' class='btn btn-warning'>Update</button></div>
+    </form>
+  </div>
+</div>
+
+<script>
+function generateCustomerCode() {
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    document.getElementById('add_customer_code').value = 'PLG-' + rand;
+}
+
+function openAddCustomerModal() {
+    generateCustomerCode();
+    new bootstrap.Modal(document.getElementById('modalAddCustomer')).show();
+}
+
+function editCustomer(c) {
+    document.getElementById('edit_c_id').value = c.id;
+    document.getElementById('edit_c_code').value = c.code;
+    document.getElementById('edit_c_name').value = c.name;
+    document.getElementById('edit_c_phone').value = c.phone || '';
+    document.getElementById('edit_c_address').value = c.address || '';
+    new bootstrap.Modal(document.getElementById('modalEditCustomer')).show();
+}
+</script>
+<%- include('../layouts/footer') %>

@@ -1,0 +1,43 @@
+<%- include('../layouts/header') %>
+<div class='p-4'>
+  <div class='d-flex justify-content-between mb-3'>
+    <h2>Kelola Voucher & Diskon</h2>
+    <button class='btn btn-primary' data-bs-toggle='modal' data-bs-target='#modalVoucher' style='background-color: var(--navy);'>+ Tambah Voucher</button>
+  </div>
+  <div class='card shadow-sm'>
+    <div class='card-body table-responsive'>
+      <table class='table table-hover align-middle'>
+        <thead class='table-light'><tr><th>Kode Voucher</th><th>Potongan (Rp)</th><th>Status</th><th class='text-center'>Aksi</th></tr></thead>
+        <tbody>
+          <% if(vouchers.length > 0) { vouchers.forEach(v => { %>
+            <tr>
+              <td><code><%= v.code %></code></td>
+              <td class='text-success fw-bold'>Rp <%= v.value.toLocaleString('id-ID') %></td>
+              <td><span class='badge bg-success'>Aktif</span></td>
+              <td class='text-center'>
+                <form action='/voucher/delete' method='POST' class='d-inline' onsubmit='return confirm("Hapus voucher ini?")'>
+                  <input type='hidden' name='id' value='<%= v.id %>'>
+                  <button type='submit' class='btn btn-sm btn-danger'><i class='bi bi-trash'></i></button>
+                </form>
+              </td>
+            </tr>
+          <% }) } else { %><tr><td colspan='4' class='text-center'>Belum ada voucher.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class='modal fade' id='modalVoucher' tabindex='-1'>
+  <div class='modal-dialog'>
+    <form action='/voucher/add' method='POST' class='modal-content'>
+      <div class='modal-header'><h5 class='modal-title'>Tambah Voucher Diskon</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-body'>
+        <div class='mb-2'><label>Kode Voucher</label><input type='text' name='code' class='form-control text-uppercase' required placeholder='Contoh: DISKON10K'></div>
+        <div class='mb-2'><label>Potongan Harga (Rp)</label><input type='number' name='value' class='form-control' required placeholder='10000'></div>
+      </div>
+      <div class='modal-footer'><button type='submit' class='btn btn-primary'>Simpan Voucher</button></div>
+    </form>
+  </div>
+</div>
+<%- include('../layouts/footer') %>

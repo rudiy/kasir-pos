@@ -1,0 +1,34 @@
+<%- include('../layouts/header') %>
+<div class='p-4'>
+  <h2>Pengaturan Toko</h2>
+  <div class='row mt-3'>
+    <div class='col-md-6'>
+        <div class='card shadow-sm'>
+            <div class='card-header bg-white fw-bold'><i class='bi bi-shop'></i> Identitas Toko (Tercetak di Struk)</div>
+            <div class='card-body'>
+                <form action='/pengaturan/update' method='POST'>
+                    <input type='hidden' name='id' value='<%= settings.id %>'>
+                    <div class='mb-3'>
+                        <label class='form-label'>Nama Toko</label>
+                        <input type='text' name='store_name' class='form-control' value='<%= settings.store_name %>' required>
+                    </div>
+                    <div class='mb-3'>
+                        <label class='form-label'>Nomor Telepon / WhatsApp</label>
+                        <input type='text' name='phone' class='form-control' value='<%= settings.phone %>' required>
+                    </div>
+                    <div class='mb-3'>
+                        <label class='form-label'>Alamat Lengkap</label>
+                        <textarea name='address' class='form-control' rows='3' required><%= settings.address %></textarea>
+                    </div>
+                    <div class='mb-3'>
+                        <label class='form-label'>Pesan Penutup di Struk (Footer)</label>
+                        <input type='text' name='receipt_footer' class='form-control' value='<%= settings.receipt_footer || "Terima Kasih Atas Kunjungan Anda" %>'>
+                    </div>
+                    <button type='submit' class='btn btn-primary w-100' style='background-color: var(--navy);'>Simpan Pengaturan</button>
+                </form>
+            </div>
+        </div>
+    </div>
+  </div>
+</div>
+<%- include('../layouts/footer') %>

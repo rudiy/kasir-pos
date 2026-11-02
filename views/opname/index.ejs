@@ -1,0 +1,60 @@
+<%- include('../layouts/header') %>
+<div class='p-4'>
+  <div class='d-flex justify-content-between mb-3'>
+    <h2>Stok Opname (Penyesuaian Stok)</h2>
+    <button class='btn btn-primary' data-bs-toggle='modal' data-bs-target='#modalOpname' style='background-color: var(--navy);'>+ Input Opname</button>
+  </div>
+  <div class='card shadow-sm'>
+    <div class='card-body table-responsive'>
+      <table class='table table-hover align-middle'>
+        <thead class='table-light'><tr><th>Tgl</th><th>Produk</th><th>Stok Sistem</th><th>Stok Fisik (Real)</th><th>Selisih</th><th>Petugas</th><th>Catatan</th></tr></thead>
+        <tbody>
+          <% if(opnames.length > 0) { opnames.forEach(o => { %>
+            <tr>
+              <td><%= new Date(o.date).toLocaleString('id-ID') %></td>
+              <td><strong><%= o.product_name %></strong></td>
+              <td><%= o.stock_system %></td>
+              <td><strong><%= o.stock_real %></strong></td>
+              <td>
+                <span class='badge <%= o.difference < 0 ? "bg-danger" : (o.difference > 0 ? "bg-success" : "bg-secondary") %>'>
+                    <%= o.difference > 0 ? "+" + o.difference : o.difference %>
+                </span>
+              </td>
+              <td><%= o.user_name %></td>
+              <td><%= o.notes || '-' %></td>
+            </tr>
+          <% }) } else { %><tr><td colspan='7' class='text-center'>Belum ada riwayat stok opname.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Opname -->
+<div class='modal fade' id='modalOpname' tabindex='-1'>
+  <div class='modal-dialog'>
+    <form action='/opname/add' method='POST' class='modal-content'>
+      <div class='modal-header'><h5 class='modal-title'>Input Stok Opname</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-body'>
+        <div class='mb-3'>
+          <label>Pilih Produk</label>
+          <select name='product_id' class='form-select' required>
+            <% products.forEach(p => { %>
+                <option value='<%= p.id %>'><%= p.name %> (Stok Sistem: <%= p.stock %>)</option>
+            <% }) %>
+          </select>
+        </div>
+        <div class='mb-3'>
+          <label>Jumlah Stok Fisik (Real)</label>
+          <input type='number' name='stock_real' class='form-control' required placeholder='Ketik hasil hitung fisik di toko'>
+        </div>
+        <div class='mb-3'>
+          <label>Catatan / Keterangan</label>
+          <textarea name='notes' class='form-control' rows='2' placeholder='Contoh: Rusak / Hilang / Selisih Hitung'></textarea>
+        </div>
+      </div>
+      <div class='modal-footer'><button type='submit' class='btn btn-primary'>Simpan & Update Stok</button></div>
+    </form>
+  </div>
+</div>
+<%- include('../layouts/footer') %>
