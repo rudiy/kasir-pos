@@ -32,6 +32,22 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// Kolom tanggal ditulis dengan CURRENT_TIMESTAMP, yang nilainya UTC. Semua tampilan
+// memakai helper ini supaya yang terbaca di layar/jam mesin kasir (WIB) tetap sama,
+// sementara filter "hari ini" ikut dihitung dengan tanggal WIB.
+const WIB_ZONE = 'Asia/Jakarta';
+const formatWIB = (value, withTime = true) => {
+    if (!value) return '-';
+    const looksLikeUtcStamp = typeof value === 'string'
+        && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(value) && !/[+z]/i.test(value);
+    const date = new Date(looksLikeUtcStamp ? value.replace(' ', 'T') + 'Z' : value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString('id-ID', withTime
+        ? { timeZone: WIB_ZONE, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }
+        : { timeZone: WIB_ZONE, day: '2-digit', month: 'short', year: 'numeric' });
+};
+const todayWIB = () => new Date().toLocaleDateString('en-CA', { timeZone: WIB_ZONE });
+
 const { isAuthenticated } = require('./middleware/auth');
 
 // MIDDLEWARE AKSES ROLE
@@ -70,6 +86,7 @@ app.use((req, res, next) => {
     res.locals.isManagerOrAdmin = res.locals.isAdmin || res.locals.isManager;
     res.locals.settings = db.prepare('SELECT * FROM settings LIMIT 1').get() || {};
     res.locals.canUseBranch = (branchId) => canAccessBranch(req.session.user, branchId);
+    res.locals.fmtWIB = formatWIB;
     next(); 
 });
 
@@ -97,7 +114,7 @@ const adjustBranchStock = (productId, branchId, delta, type, refId, note, userId
 
 // FUNGSI STATISTIK MULTI-CABANG REAL-TIME
 function getTodayStats(user, selectedBranchId) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayWIB();
     const isAdminUser = user.role === 'Administrator';
     const requested = parseInt(selectedBranchId, 10);
     const scopedBranchId = isAdminUser
@@ -108,7 +125,8 @@ function getTodayStats(user, selectedBranchId) {
     const branchFilterPlain = scopedBranchId ? " AND branch_id = ?" : "";
     const branchParams = scopedBranchId ? [scopedBranchId] : [];
 
-    const salesToday = db.prepare("SELECT SUM(total) as total, COUNT(id) as count FROM sales s WHERE date(s.date, 'localtime') = ?" + branchFilterSales).get(today, ...branchParams) || {total:0, count:0};
+    const notVoid = " AND COALESCE(s.status, '') <> 'VOID'";
+    const salesToday = db.prepare("SELECT SUM(total) as total, COUNT(id) as count FROM sales s WHERE date(s.date, 'localtime') = ?" + notVoid + branchFilterSales).get(today, ...branchParams) || {total:0, count:0};
     const productCount = db.prepare('SELECT COUNT(*) as count FROM products').get() || {count:0};
 
     let expToday = 0;
@@ -122,7 +140,7 @@ function getTodayStats(user, selectedBranchId) {
             payToday = db.prepare("SELECT SUM(amount) as total FROM payroll WHERE date(date, 'localtime') = ?").get(today).total || 0;
         }
 
-        const salesTodayItems = db.prepare("SELECT s.id FROM sales s WHERE date(s.date, 'localtime') = ?" + branchFilterSales).all(today, ...branchParams);
+        const salesTodayItems = db.prepare("SELECT s.id FROM sales s WHERE date(s.date, 'localtime') = ?" + notVoid + branchFilterSales).all(today, ...branchParams);
         const cogsPerSale = db.prepare("SELECT SUM(COALESCE(NULLIF(si.cogs, 0), p.price_buy, 0) * si.qty) as total FROM sale_items si LEFT JOIN products p ON si.product_id = p.id WHERE si.sale_id = ?");
         salesTodayItems.forEach(s => {
             const itemCogs = cogsPerSale.get(s.id);
@@ -638,15 +656,19 @@ app.get('/laporan', (req, res) => {
     }
 
     const whereClause = whereConditions.length > 0 ? "WHERE " + whereConditions.join(" AND ") : "";
-    const sales = db.prepare("SELECT s.*, u.name as kasir, b.name as branch_name FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN branches b ON s.branch_id = b.id " + whereClause + " ORDER BY s.date DESC LIMIT 500").all(...whereParams);
+    const sales = db.prepare("SELECT s.*, u.name as kasir, b.name as branch_name, vu.name as voided_by_name FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN branches b ON s.branch_id = b.id LEFT JOIN users vu ON s.voided_by = vu.id " + whereClause + " ORDER BY s.date DESC LIMIT 500").all(...whereParams);
     
+    // Baris VOID tetap ditampilkan di tabel sebagai jejak audit, tetapi tidak dihitung
+    // dalam omzet, HPP, maupun jumlah transaksi.
+    const aktif = sales.filter(s => s.status !== 'VOID');
+
     let totalCogs = 0;
-    sales.forEach(s => {
+    aktif.forEach(s => {
         const items = db.prepare("SELECT SUM(COALESCE(NULLIF(si.cogs, 0), p.price_buy, 0) * si.qty) as cogs_total FROM sale_items si LEFT JOIN products p ON si.product_id = p.id WHERE si.sale_id = ?").get(s.id);
         totalCogs += (items ? (items.cogs_total || 0) : 0);
     });
 
-    const totalRp = sales.reduce((sum, item) => sum + (item.total || 0), 0);
+    const totalRp = aktif.reduce((sum, item) => sum + (item.total || 0), 0);
     const labaKotor = totalRp - totalCogs;
 
     let expWhereConditions = [];
@@ -671,7 +693,39 @@ app.get('/laporan', (req, res) => {
     const labaBersih = labaKotor - expTotal - payTotal;
     const settings = db.prepare('SELECT * FROM settings LIMIT 1').get();
 
-    res.render('laporan', { sales, filter, totalRp, totalTx: sales.length, totalCogs, labaKotor, expTotal, payTotal, labaBersih, settings });
+    res.render('laporan', { sales, filter, totalRp, totalTx: aktif.length, totalCogs, labaKotor, expTotal, payTotal, labaBersih, settings });
+});
+
+// PEMBATALAN / RETUR PENJUALAN
+app.post('/laporan/void', isManagerOrAdmin, (req, res) => {
+    try {
+        const user = req.session.user;
+        const saleId = Number(req.body.id);
+        const reason = String(req.body.reason || '').trim();
+        const backTo = '/laporan' + (req.body.filter ? '?filter=' + encodeURIComponent(req.body.filter) : '');
+        if (!Number.isInteger(saleId) || saleId <= 0) return res.status(400).send('ID transaksi tidak valid.');
+        if (reason.length < 3) return res.status(400).send('Alasan pembatalan wajib diisi minimal 3 karakter.');
+
+        const sale = db.prepare('SELECT * FROM sales WHERE id = ?').get(saleId);
+        if (!sale) return res.status(404).send('Transaksi tidak ditemukan.');
+        if (!canAccessBranch(user, sale.branch_id)) return res.status(403).send('Transaksi bukan dari cabang Anda.');
+        if (sale.status === 'VOID') return res.status(409).send('Transaksi ' + sale.invoice_no + ' sudah dibatalkan sebelumnya.');
+
+        const items = db.prepare('SELECT product_id, qty FROM sale_items WHERE sale_id = ?').all(saleId);
+
+        db.transaction(() => {
+            const mark = db.prepare("UPDATE sales SET status = 'VOID', voided_at = CURRENT_TIMESTAMP, voided_by = ?, void_reason = ? WHERE id = ? AND COALESCE(status, '') <> 'VOID'")
+                .run(user.id, reason, saleId);
+            if (mark.changes === 0) throw new Error('Transaksi sudah dibatalkan sebelumnya.');
+            if (items.length === 0) throw new Error('Transaksi tidak memiliki item, tidak ada stok yang bisa dikembalikan.');
+
+            initDB.ensureStockRows([sale.branch_id], items.map(i => i.product_id));
+            items.forEach(i => adjustBranchStock(i.product_id, sale.branch_id, i.qty, 'VOID', saleId,
+                'Retur ' + sale.invoice_no + ': ' + reason, user.id));
+        })();
+
+        res.redirect(backTo);
+    } catch (err) { res.status(500).send(err.message); }
 });
 
 // PENGGUNA (Manager Cabang Bisa Buat Akun Kasir Cabangnya)

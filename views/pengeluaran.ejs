@@ -11,7 +11,7 @@
         <tbody>
           <% let totalExp = 0; if(expenses.length > 0) { expenses.forEach(e => { totalExp += e.amount; %>
             <tr>
-              <td><%= new Date(e.date).toLocaleString('id-ID') %></td>
+              <td><%= fmtWIB(e.date) %></td>
               <td><strong><%= e.title %></strong></td>
               <td class='text-danger fw-bold'>Rp <%= e.amount.toLocaleString('id-ID') %></td>
               <td><%= e.notes || '-' %></td>

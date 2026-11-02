@@ -12,7 +12,7 @@
       <strong><i class='bi bi-truck'></i> Ada <%= pendingForMe.length %> transfer menunggu penerimaan di <%= myBranch.name %>.</strong>
       <ul class='mb-0 mt-1'>
         <% pendingForMe.forEach(t => { %>
-          <li><code><%= t.code %></code> dari <%= t.from_branch_name %> — dibuat <%= new Date(t.created_at).toLocaleString('id-ID') %></li>
+          <li><code><%= t.code %></code> dari <%= t.from_branch_name %> — dibuat <%= fmtWIB(t.created_at) %></li>
         <% }) %>
       </ul>
     </div>
@@ -92,8 +92,8 @@
               <td>
                 <button class='btn btn-sm btn-outline-secondary' onclick='toggleItems(<%= t.id %>)'><%= t.items.length %> item</button>
               </td>
-              <td><small><%= new Date(t.created_at).toLocaleString('id-ID') %><br>oleh <%= t.created_by_name || '-' %></small></td>
-              <td><small><%= t.received_at ? new Date(t.received_at).toLocaleString('id-ID') : '-' %></small></td>
+              <td><small><%= fmtWIB(t.created_at) %><br>oleh <%= t.created_by_name || '-' %></small></td>
+              <td><small><%= fmtWIB(t.received_at) %></small></td>
               <td class='text-center'>
                 <% if (t.status === 'PENDING') { %>
                   <% if (canUseBranch(t.to_branch_id)) { %>

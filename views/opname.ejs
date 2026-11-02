@@ -21,7 +21,7 @@
         <tbody>
           <% if(opnames.length > 0) { opnames.forEach(o => { %>
             <tr>
-              <td><%= new Date(o.date).toLocaleString('id-ID') %></td>
+              <td><%= fmtWIB(o.date) %></td>
               <td><strong><%= o.product_name %></strong></td>
               <% if (isAdmin) { %><td><%= o.branch_name || '-' %></td><% } %>
               <td><%= o.stock_system %></td>

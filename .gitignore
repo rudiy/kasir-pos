@@ -5,3 +5,7 @@ update-fitur-3.js
 # ke database/kasir.db, jadi tidak perlu ikut versi git.
 database/*.db-wal
 database/*.db-shm
+
+# Hasil "kirim project" dari folder ini isinya salinan .env + database lama,
+# jadi jangan sampai ikut committed.
+/kasir-pos.zip

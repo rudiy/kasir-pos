@@ -84,20 +84,38 @@
             <th>Kasir</th>
             <th>Metode</th>
             <th class='text-end'>Total Transaksi</th>
+            <th>Status</th>
+            <% if (isManagerOrAdmin) { %><th class='text-center no-print'>Aksi</th><% } %>
           </tr>
         </thead>
         <tbody>
-          <% if(sales.length > 0) { sales.forEach(s => { %>
-            <tr>
-              <td><%= new Date(s.date).toLocaleString('id-ID') %></td>
-              <td><strong><%= s.invoice_no %></strong></td>
+          <% if(sales.length > 0) { sales.forEach(s => { const isVoid = s.status === 'VOID'; %>
+            <tr class='<%= isVoid ? "table-light text-muted" : "" %>'>
+              <td><%= fmtWIB(s.date) %></td>
+              <td><strong class='<%= isVoid ? "text-decoration-line-through" : "" %>'><%= s.invoice_no %></strong></td>
               <td><span class='badge bg-secondary'><i class='bi bi-building'></i> <%= s.branch_name || 'Cabang Pusat' %></span></td>
               <td><%= s.kasir || 'Admin' %></td>
               <td><span class='badge bg-secondary'><%= s.payment_method %></span></td>
-              <td class='text-end fw-bold'>Rp <%= s.total.toLocaleString('id-ID') %></td>
+              <td class='text-end fw-bold <%= isVoid ? "text-decoration-line-through" : "" %>'>Rp <%= s.total.toLocaleString('id-ID') %></td>
+              <td>
+                <% if (isVoid) { %>
+                  <span class='badge bg-dark'>DIBATALKAN</span>
+                <% } else { %>
+                  <span class='badge bg-success'>AKTIF</span>
+                <% } %>
+              </td>
+              <% if (isManagerOrAdmin) { %>
+              <td class='text-center no-print'>
+                <% if (isVoid) { %>
+                  <small><%= s.voided_by_name || '-' %><br><%= fmtWIB(s.voided_at) %><br><em><%= s.void_reason || '-' %></em></small>
+                <% } else { %>
+                  <button class='btn btn-sm btn-outline-danger' data-id='<%= s.id %>' data-no='<%= s.invoice_no %>' onclick='voidSale(this)'><i class='bi bi-x-circle'></i> Batal</button>
+                <% } %>
+              </td>
+              <% } %>
             </tr>
           <% }) } else { %>
-            <tr><td colspan='6' class='text-center p-4 text-muted'>Tidak ada transaksi pada periode ini.</td></tr>
+            <tr><td colspan='<%= isManagerOrAdmin ? 8 : 7 %>' class='text-center p-4 text-muted'>Tidak ada transaksi pada periode ini.</td></tr>
           <% } %>
         </tbody>
       </table>
@@ -131,6 +149,28 @@ function printThermalReport() {
   window.print();
   document.body.classList.remove('print-receipt-mode');
   pa.style.display = 'none';
+}
+
+function voidSale(btn) {
+  const reason = window.prompt('Alasan pembatalan nota ' + btn.dataset.no + ' (minimal 3 karakter).');
+  if (reason === null) return;
+  if (reason.trim().length < 3) { window.alert('Alasan pembatalan wajib diisi minimal 3 karakter.'); return; }
+  if (!window.confirm('Batalkan ' + btn.dataset.no + '? Barang akan dikembalikan ke stok cabang asal transaksi.')) return;
+
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/laporan/void';
+  const fields = { id: btn.dataset.id, reason: reason.trim(), filter: '<%= filter %>' };
+  Object.keys(fields).forEach(name => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = name;
+    input.value = fields[name];
+    form.appendChild(input);
+  });
+  btn.disabled = true;
+  document.body.appendChild(form);
+  form.submit();
 }
 </script>
 <%- include('layout-footer') %>

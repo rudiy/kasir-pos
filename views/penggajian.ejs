@@ -11,7 +11,7 @@
         <tbody>
           <% if(payrolls.length > 0) { payrolls.forEach(p => { %>
             <tr>
-              <td><%= new Date(p.date).toLocaleDateString('id-ID') %></td>
+              <td><%= fmtWIB(p.date, false) %></td>
               <td><strong><%= p.user_name %></strong></td>
               <td><span class='badge bg-info text-dark'><%= p.month_year %></span></td>
               <td class='text-success fw-bold'>Rp <%= p.amount.toLocaleString('id-ID') %></td>

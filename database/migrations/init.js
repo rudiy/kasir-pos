@@ -72,6 +72,9 @@ const initDB = () => {
       payment_amount REAL, 
       return_amount REAL, 
       status TEXT,
+      voided_at DATETIME,
+      voided_by INTEGER,
+      void_reason TEXT,
       FOREIGN KEY(branch_id) REFERENCES branches(id)
     );
 
@@ -150,6 +153,9 @@ const initDB = () => {
   ensureColumn('sales', 'discount', 'REAL DEFAULT 0');
   ensureColumn('sales', 'tax', 'REAL DEFAULT 0');
   ensureColumn('settings', 'tax_rate', 'REAL DEFAULT 0');
+  ensureColumn('sales', 'voided_at', 'DATETIME');
+  ensureColumn('sales', 'voided_by', 'INTEGER');
+  ensureColumn('sales', 'void_reason', 'TEXT');
 
   const checkBranch = db.prepare('SELECT * FROM branches WHERE id = 1').get();
   if(!checkBranch) {
