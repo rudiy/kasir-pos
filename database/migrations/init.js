@@ -48,7 +48,6 @@ const initDB = () => {
       barcode TEXT UNIQUE, 
       name TEXT, 
       category_id INTEGER, 
-      unit_id INTEGER, 
       price_buy REAL, 
       price_sell REAL, 
       stock INTEGER DEFAULT 0, 
