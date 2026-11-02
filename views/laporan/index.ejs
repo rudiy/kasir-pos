@@ -1,7 +1,7 @@
 <%- include('../layouts/header') %>
 <div class='p-4'>
   <div class='d-flex justify-content-between align-items-center mb-3 no-print'>
-    <h2>Laporan Penjualan <%= isAdmin ? "& Laba Bersih" : "" %></h2>
+    <h2>Laporan Penjualan <%= isManagerOrAdmin ? "& Laba Bersih" : "" %></h2>
     <div>
         <button class='btn btn-outline-dark me-2' onclick='printThermalReport()'><i class='bi bi-receipt'></i> Cetak Struk Thermal (58mm)</button>
         <button class='btn btn-outline-success' onclick='window.print()'><i class='bi bi-file-earmark-pdf'></i> Cetak PDF / A4</button>
@@ -14,8 +14,8 @@
     <a href='/laporan?filter=semua' class='btn <%= filter === "semua" ? "btn-primary" : "btn-outline-primary" %>'>Semua Transaksi</a>
   </div>
 
-  <% if(isAdmin) { %>
-  <!-- Kartu Finansial Khusus Super Admin / Pemilik Toko -->
+  <% if(isManagerOrAdmin) { %>
+  <!-- Kartu Finansial Khusus Admin & Manager Cabang -->
   <div class='row mb-4'>
     <div class='col-md-3 mb-2'>
         <div class='card bg-light border-0 shadow-sm'>
@@ -36,7 +36,7 @@
     <div class='col-md-3 mb-2'>
         <div class='card bg-light border-0 shadow-sm'>
             <div class='card-body'>
-                <h6 class='text-muted small'>Pengeluaran + Gaji</h6>
+                <h6 class='text-muted small'>Pengeluaran <%= isAdmin ? "+ Gaji" : "Cabang" %></h6>
                 <h4 class='fw-bold text-danger mb-0'>Rp <%= (expTotal + payTotal).toLocaleString('id-ID') %></h4>
             </div>
         </div>
@@ -44,7 +44,7 @@
     <div class='col-md-3 mb-2'>
         <div class='card bg-success text-white border-0 shadow-sm'>
             <div class='card-body'>
-                <h6 class='small'>LABA BERSIH</h6>
+                <h6 class='small'>LABA BERSIH <%= isManager ? "(CABANG)" : "" %></h6>
                 <h3 class='fw-bold mb-0'>Rp <%= labaBersih.toLocaleString('id-ID') %></h3>
             </div>
         </div>
@@ -80,6 +80,7 @@
           <tr>
             <th>Tgl / Waktu</th>
             <th>No. Nota</th>
+            <th>Cabang</th>
             <th>Kasir</th>
             <th>Metode</th>
             <th class='text-end'>Total Transaksi</th>
@@ -90,12 +91,13 @@
             <tr>
               <td><%= new Date(s.date).toLocaleString('id-ID') %></td>
               <td><strong><%= s.invoice_no %></strong></td>
+              <td><span class='badge bg-secondary'><i class='bi bi-building'></i> <%= s.branch_name || 'Cabang Pusat' %></span></td>
               <td><%= s.kasir || 'Admin' %></td>
               <td><span class='badge bg-secondary'><%= s.payment_method %></span></td>
               <td class='text-end fw-bold'>Rp <%= s.total.toLocaleString('id-ID') %></td>
             </tr>
           <% }) } else { %>
-            <tr><td colspan='5' class='text-center p-4 text-muted'>Tidak ada transaksi pada periode ini.</td></tr>
+            <tr><td colspan='6' class='text-center p-4 text-muted'>Tidak ada transaksi pada periode ini.</td></tr>
           <% } %>
         </tbody>
       </table>
@@ -110,21 +112,20 @@ function printThermalReport() {
   const pa = document.getElementById('print-area');
   pa.style.display = 'block';
   const now = new Date();
-  const isAdminUser = <%= isAdmin ? 'true' : 'false' %>;
+  const isManagerOrAdminUser = <%= isManagerOrAdmin ? 'true' : 'false' %>;
 
-  let h = `<div style='text-align:center;'><strong><%= settings.store_name %></strong><br>LAPORAN REKAP (<%= filter.toUpperCase() %>)<br><small>${now.toLocaleString('id-ID')}</small></div><hr style='border-top:1px dashed #000;'>`;
-  h += `<div style='display:flex; justify-content:space-between;'><span>Total Tx</span><span><%= totalTx %></span></div>`;
-  h += `<div style='display:flex; justify-content:space-between;'><span>Omset</span><span>Rp <%= totalRp.toLocaleString('id-ID') %></span></div>`;
+  let h = "<div style='text-align:center;'><strong><%= settings.store_name %></strong><br>LAPORAN REKAP (<%= filter.toUpperCase() %>)<br><small>" + now.toLocaleString('id-ID') + "</small></div><hr style='border-top:1px dashed #000;'>";
+  h += "<div style='display:flex; justify-content:space-between;'><span>Total Tx</span><span><%= totalTx %></span></div>";
+  h += "<div style='display:flex; justify-content:space-between;'><span>Omset</span><span>Rp <%= totalRp.toLocaleString('id-ID') %></span></div>";
   
-  if (isAdminUser) {
-    h += `<div style='display:flex; justify-content:space-between;'><span>HPP</span><span>Rp <%= totalCogs.toLocaleString('id-ID') %></span></div>`;
-    h += `<div style='display:flex; justify-content:space-between;'><span>Laba Kotor</span><span>Rp <%= labaKotor.toLocaleString('id-ID') %></span></div>`;
-    h += `<div style='display:flex; justify-content:space-between;'><span>Pengeluaran</span><span>Rp <%= expTotal.toLocaleString('id-ID') %></span></div>`;
-    h += `<div style='display:flex; justify-content:space-between;'><span>Gaji</span><span>Rp <%= payTotal.toLocaleString('id-ID') %></span></div>`;
-    h += `<hr style='border-top:1px dashed #000;'><div style='display:flex; justify-content:space-between;'><strong>LABA BERSIH</strong><strong>Rp <%= labaBersih.toLocaleString('id-ID') %></strong></div>`;
+  if (isManagerOrAdminUser) {
+    h += "<div style='display:flex; justify-content:space-between;'><span>HPP</span><span>Rp <%= totalCogs.toLocaleString('id-ID') %></span></div>";
+    h += "<div style='display:flex; justify-content:space-between;'><span>Laba Kotor</span><span>Rp <%= labaKotor.toLocaleString('id-ID') %></span></div>";
+    h += "<div style='display:flex; justify-content:space-between;'><span>Pengeluaran</span><span>Rp <%= expTotal.toLocaleString('id-ID') %></span></div>";
+    h += "<hr style='border-top:1px dashed #000;'><div style='display:flex; justify-content:space-between;'><strong>LABA BERSIH</strong><strong>Rp <%= labaBersih.toLocaleString('id-ID') %></strong></div>";
   }
 
-  h += `<hr style='border-top:1px dashed #000;'><div style='text-align:center;'>--- SELESAI ---</div>`;
+  h += "<hr style='border-top:1px dashed #000;'><div style='text-align:center;'>--- SELESAI ---</div>";
   pa.innerHTML = h;
   document.body.classList.add('print-receipt-mode');
   window.print();

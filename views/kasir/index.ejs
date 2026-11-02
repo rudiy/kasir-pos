@@ -1,12 +1,11 @@
 <%- include('../layouts/header') %>
 <div class='row g-0'>
-  <!-- Area Produk -->
   <div class='col-md-8 p-3 bg-light'>
     <input type='text' id='barcode-input' class='form-control mb-3 p-3 shadow-sm' placeholder='Scan Barcode atau Cari Produk (F2)...' autofocus>
     <div class='row g-2' id='product-grid'>
       <% products.forEach(p => { %>
         <div class='col-md-3 col-6'>
-          <div class='card product-card h-100' onclick='addToCart(<%= JSON.stringify(p) %>)'>
+          <div class='card product-card h-100' data-product='<%= encodeURIComponent(JSON.stringify(p)) %>' onclick='addToCartFromData(this)'>
             <div class='card-body text-center p-2'>
               <h6 class='card-title text-truncate'><%= p.name %></h6>
               <p class='text-success fw-bold mb-0'>Rp <%= p.price_sell.toLocaleString('id-ID') %></p>
@@ -17,7 +16,6 @@
       <% }) %>
     </div>
   </div>
-  <!-- Area Keranjang (Cart) -->
   <div class='col-md-4 pos-cart-panel d-flex flex-column'>
     <div class='p-3 bg-white flex-grow-1' id='cart-items'>
       <div class='text-center text-muted mt-5'>Keranjang Kosong</div>
@@ -29,7 +27,6 @@
   </div>
 </div>
 
-<!-- Modal Pembayaran -->
 <div class='modal fade' id='paymentModal' tabindex='-1'>
   <div class='modal-dialog'>
     <div class='modal-content'>
@@ -97,11 +94,11 @@ function renderCart() {
   cart.forEach(item => {
     const sub = item.qty * item.price_sell;
     cartTotal += sub;
-    html += `<div class='d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom'>
-      <div><div class='fw-bold'>${item.name}</div><div class='text-muted small'>Rp ${formatter.format(item.price_sell)} x ${item.qty}</div></div>
-      <div class='text-end'><div class='fw-bold'>Rp ${formatter.format(sub)}</div>
-      <div class='btn-group btn-group-sm mt-1'><button class='btn btn-outline-secondary' onclick='updateQty(${item.id}, -1)'>-</button><button class='btn btn-outline-secondary' onclick='updateQty(${item.id}, 1)'>+</button></div></div>
-    </div>`;
+    html += '<div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">' +
+      '<div><div class="fw-bold">' + item.name + '</div><div class="text-muted small">Rp ' + formatter.format(item.price_sell) + ' x ' + item.qty + '</div></div>' +
+      '<div class="text-end"><div class="fw-bold">Rp ' + formatter.format(sub) + '</div>' +
+      '<div class="btn-group btn-group-sm mt-1"><button class="btn btn-outline-secondary" onclick="updateQty(' + item.id + ', -1)">-</button><button class="btn btn-outline-secondary" onclick="updateQty(' + item.id + ', 1)">+</button></div></div>' +
+    '</div>';
   });
   container.innerHTML = html;
   finalTotal = cartTotal;
@@ -147,13 +144,19 @@ function printReceipt(invoice, amount) {
   pa.style.display = 'block';
   const now = new Date();
   const dateStr = now.toLocaleDateString('id-ID') + ' ' + now.toLocaleTimeString('id-ID');
-  let h = `<div style='text-align:center; font-family:monospace; margin-bottom:5px;'><strong><%= settings.store_name %></strong><br><%= settings.address %><br>Telp: <%= settings.phone %><br><small>${dateStr}</small><br>No: ${invoice}</div><hr style='border-top:1px dashed #000;'>`;
-  cart.forEach(i => { h += `<div style='display:flex; justify-content:space-between;'><span>${i.name} (${i.qty})</span><span>${formatter.format(i.qty * i.price_sell)}</span></div>`; });
-  if(discountVal > 0) h += `<div style='display:flex; justify-content:space-between; color:red;'><span>Diskon</span><span>-${formatter.format(discountVal)}</span></div>`;
-  h += `<hr style='border-top:1px dashed #000;'><div style='display:flex; justify-content:space-between;'><strong>Total</strong><strong>${formatter.format(finalTotal)}</strong></div>`;
-  h += `<div style='display:flex; justify-content:space-between;'><span>Bayar</span><span>${formatter.format(amount)}</span></div>`;
-  h += `<div style='display:flex; justify-content:space-between;'><span>Kembali</span><span>${formatter.format(amount - finalTotal)}</span></div>`;
-  h += `<hr style='border-top:1px dashed #000;'><div style='text-align:center; font-size:10px;'><strong>NOTED:</strong><br>Barang yang sudah dibeli tidak bisa dikembalikan.<br>Terima Kasih!</div>`;
+  
+  let logoHtml = '';
+  <% if(settings && settings.logo) { %>
+    logoHtml = '<div style="text-align:center;"><img src="<%= settings.logo %>" style="max-height:40px; margin-bottom:5px;"></div>';
+  <% } %>
+
+  let h = logoHtml + '<div style="text-align:center; font-family:monospace; margin-bottom:5px;"><strong><%= settings.store_name %></strong><br><%= settings.address %><br>Telp: <%= settings.phone %><br><small>' + dateStr + '</small><br>No: ' + invoice + '</div><hr style="border-top:1px dashed #000;">';
+  cart.forEach(i => { h += '<div style="display:flex; justify-content:space-between;"><span>' + i.name + ' (' + i.qty + ')</span><span>' + formatter.format(i.qty * i.price_sell) + '</span></div>'; });
+  if(discountVal > 0) h += '<div style="display:flex; justify-content:space-between; color:red;"><span>Diskon</span><span>-' + formatter.format(discountVal) + '</span></div>';
+  h += '<hr style="border-top:1px dashed #000;"><div style="display:flex; justify-content:space-between;"><strong>Total</strong><strong>' + formatter.format(finalTotal) + '</strong></div>';
+  h += '<div style="display:flex; justify-content:space-between;"><span>Bayar</span><span>' + formatter.format(amount) + '</span></div>';
+  h += '<div style="display:flex; justify-content:space-between;"><span>Kembali</span><span>' + formatter.format(amount - finalTotal) + '</span></div>';
+  h += '<hr style="border-top:1px dashed #000;"><div style="text-align:center; font-size:10px;"><strong><%= settings.receipt_note || "NOTED: Barang yang sudah dibeli tidak bisa dikembalikan." %></strong><br><%= settings.receipt_footer || "Terima Kasih!" %></div>';
   pa.innerHTML = h;
   document.body.classList.add('print-receipt-mode');
   window.print();

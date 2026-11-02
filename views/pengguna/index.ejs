@@ -1,19 +1,24 @@
 <%- include('../layouts/header') %>
 <div class='p-4'>
   <div class='d-flex justify-content-between mb-3'>
-    <h2>Manajemen Kasir & Pengguna</h2>
-    <button class='btn btn-primary' data-bs-toggle='modal' data-bs-target='#modalAddUser' style='background-color: var(--navy);'>+ Tambah Pengguna</button>
+    <h2>Manajemen Staff & Pengguna</h2>
+    <button class='btn btn-primary' data-bs-toggle='modal' data-bs-target='#modalAddUser' style='background-color: var(--navy);'>+ Tambah Staff</button>
   </div>
   <div class='card shadow-sm'>
     <div class='card-body table-responsive'>
       <table class='table table-hover align-middle'>
-        <thead class='table-light'><tr><th>Nama Lengkap</th><th>Username</th><th>Role / Akses</th><th>Status</th><th class='text-center'>Aksi</th></tr></thead>
+        <thead class='table-light'><tr><th>Nama Lengkap</th><th>Username</th><th>Cabang Penugasan</th><th>Role / Akses</th><th>Status</th><th class='text-center'>Aksi</th></tr></thead>
         <tbody>
           <% users.forEach(u => { %>
             <tr>
               <td><%= u.name %></td>
               <td><strong><%= u.username %></strong></td>
-              <td><span class='badge <%= u.role === "Administrator" ? "bg-primary" : "bg-info text-dark" %>'><%= u.role %></span></td>
+              <td><span class='badge bg-secondary'><i class='bi bi-building'></i> <%= u.branch_name || 'Cabang Pusat' %></span></td>
+              <td>
+                <span class='badge <%= u.role === "Administrator" ? "bg-primary" : (u.role === "Manager Cabang" ? "bg-warning text-dark" : "bg-info text-dark") %>'>
+                    <%= u.role %>
+                </span>
+              </td>
               <td><span class='badge bg-success'>Aktif</span></td>
               <td class='text-center'>
                 <button class='btn btn-sm btn-warning me-1' onclick='editUser(<%= JSON.stringify(u) %>)'><i class='bi bi-pencil'></i> Edit / Reset Pass</button>
@@ -36,19 +41,32 @@
 <div class='modal fade' id='modalAddUser' tabindex='-1'>
   <div class='modal-dialog'>
     <form action='/pengguna/add' method='POST' class='modal-content'>
-      <div class='modal-header'><h5 class='modal-title'>Tambah Pengguna Baru</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-header'><h5 class='modal-title'>Tambah Staff Pengguna Baru</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
       <div class='modal-body'>
         <div class='mb-2'><label>Nama Lengkap</label><input type='text' name='name' class='form-control' required></div>
         <div class='mb-2'><label>Username (Untuk Login)</label><input type='text' name='username' class='form-control' required></div>
         <div class='mb-2'><label>Password</label><input type='password' name='password' class='form-control' required></div>
+        
+        <% if(isAdmin) { %>
+        <div class='mb-2'><label>Cabang Penugasan</label>
+          <select name='branch_id' class='form-select'>
+            <% branches.forEach(b => { %>
+                <option value='<%= b.id %>'><%= b.name %> (PIC: <%= b.pic_name %>)</option>
+            <% }) %>
+          </select>
+        </div>
         <div class='mb-2'><label>Hak Akses (Role)</label>
           <select name='role' class='form-select'>
             <option value='Kasir'>Kasir (Hanya POS & Produk)</option>
+            <option value='Manager Cabang'>Manager Cabang (Laba & Pengeluaran Cabang)</option>
             <option value='Administrator'>Administrator (Full Akses)</option>
           </select>
         </div>
+        <% } else { %>
+            <div class='alert alert-info py-2 small mb-2'>Staff baru akan otomatis ditugaskan ke Cabang Anda sebagai <strong>Kasir</strong>.</div>
+        <% } %>
       </div>
-      <div class='modal-footer'><button type='submit' class='btn btn-primary'>Simpan Akun</button></div>
+      <div class='modal-footer'><button type='submit' class='btn btn-primary'>Simpan Staff</button></div>
     </form>
   </div>
 </div>
@@ -57,29 +75,42 @@
 <div class='modal fade' id='modalEditUser' tabindex='-1'>
   <div class='modal-dialog'>
     <form action='/pengguna/edit' method='POST' class='modal-content'>
-      <div class='modal-header'><h5 class='modal-title'>Edit Pengguna</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-header'><h5 class='modal-title'>Edit Staff</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
       <div class='modal-body'>
         <input type='hidden' name='id' id='edit_u_id'>
         <div class='mb-2'><label>Nama Lengkap</label><input type='text' name='name' id='edit_u_name' class='form-control' required></div>
         <div class='mb-2'><label>Username</label><input type='text' name='username' id='edit_u_username' class='form-control' required></div>
-        <div class='mb-2'><label>Reset Password (Kosongkan jika tidak ingin diubah)</label><input type='password' name='password' class='form-control' placeholder='Ketik password baru...'></div>
+        <div class='mb-2'><label>Reset Password (Kosongkan jika tidak diubah)</label><input type='password' name='password' class='form-control'></div>
+        
+        <% if(isAdmin) { %>
+        <div class='mb-2'><label>Cabang Penugasan</label>
+          <select name='branch_id' id='edit_u_branch' class='form-select'>
+            <% branches.forEach(b => { %>
+                <option value='<%= b.id %>'><%= b.name %> (PIC: <%= b.pic_name %>)</option>
+            <% }) %>
+          </select>
+        </div>
         <div class='mb-2'><label>Hak Akses (Role)</label>
           <select name='role' id='edit_u_role' class='form-select'>
             <option value='Kasir'>Kasir</option>
+            <option value='Manager Cabang'>Manager Cabang</option>
             <option value='Administrator'>Administrator</option>
           </select>
         </div>
+        <% } %>
       </div>
-      <div class='modal-footer'><button type='submit' class='btn btn-warning'>Update Akun</button></div>
+      <div class='modal-footer'><button type='submit' class='btn btn-warning'>Update Staff</button></div>
     </form>
   </div>
 </div>
+
 <script>
 function editUser(u) {
     document.getElementById('edit_u_id').value = u.id;
     document.getElementById('edit_u_name').value = u.name;
     document.getElementById('edit_u_username').value = u.username;
-    document.getElementById('edit_u_role').value = u.role;
+    if(document.getElementById('edit_u_branch')) document.getElementById('edit_u_branch').value = u.branch_id || 1;
+    if(document.getElementById('edit_u_role')) document.getElementById('edit_u_role').value = u.role;
     new bootstrap.Modal(document.getElementById('modalEditUser')).show();
 }
 </script>
