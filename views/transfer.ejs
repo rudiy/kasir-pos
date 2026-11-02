@@ -1,4 +1,4 @@
-<%- include('../layouts/header') %>
+<%- include('layout-header') %>
 <%
   const myBranch = branches.find(b => b.id === user.branch_id) || {};
   const fromBranchOptions = branches.filter(b => b.is_active === 1);
@@ -160,4 +160,4 @@ function reloadBranchProducts() {
 
 captureOptions();
 </script>
-<%- include('../layouts/footer') %>
+<%- include('layout-footer') %>

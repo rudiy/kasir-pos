@@ -1,4 +1,4 @@
-<%- include('../layouts/header') %>
+<%- include('layout-header') %>
 <div class='p-4'>
   <div class='d-flex justify-content-between align-items-center mb-3 no-print'>
     <h2>Laporan Penjualan <%= isManagerOrAdmin ? "& Laba Bersih" : "" %></h2>
@@ -133,4 +133,4 @@ function printThermalReport() {
   pa.style.display = 'none';
 }
 </script>
-<%- include('../layouts/footer') %>
+<%- include('layout-footer') %>

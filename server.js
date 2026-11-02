@@ -45,18 +45,18 @@ const isManagerOrAdmin = (req, res, next) => {
     res.status(403).send('<h1>Akses Ditolak</h1><p>Hanya Manager Cabang / Admin yang dapat mengakses fitur ini.</p><a href="/">Kembali</a>');
 };
 
-app.get('/login', (req, res) => res.render('auth/login', { error: null }));
+app.get('/login', (req, res) => res.render('login', { error: null }));
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   const user = db.prepare('SELECT u.*, b.name as branch_name, b.is_active as branch_active FROM users u LEFT JOIN branches b ON u.branch_id = b.id WHERE u.username = ? AND u.is_active = 1').get(username);
   if (user && bcrypt.compareSync(password, user.password)) {
     if (user.role !== 'Administrator' && user.branch_active === 0) {
-        return res.render('auth/login', { error: 'Cabang toko Anda saat ini NONAKTIF/OFF. Silakan hubungi Super Admin.' });
+        return res.render('login', { error: 'Cabang toko Anda saat ini NONAKTIF/OFF. Silakan hubungi Super Admin.' });
     }
     req.session.user = user;
     res.redirect('/');
   } else {
-    res.render('auth/login', { error: 'Username/Password salah atau akun nonaktif' });
+    res.render('login', { error: 'Username/Password salah atau akun nonaktif' });
   }
 });
 app.get('/logout', (req, res) => { req.session.destroy(); res.redirect('/login'); });
@@ -146,7 +146,7 @@ app.get('/', (req, res) => {
     const stats = getTodayStats(req.session.user, selectedBranch);
     const branches = db.prepare('SELECT * FROM branches WHERE is_active = 1').all();
     
-    res.render('dashboard/index', { 
+    res.render('dashboard', { 
         salesToday: stats.salesToday, 
         productCount: stats.productCount, 
         expToday: stats.totalExpPay, 
@@ -159,7 +159,7 @@ app.get('/', (req, res) => {
 // MANAJEMEN CABANG (Admin Only)
 app.get('/cabang', isAdmin, (req, res) => {
     const branches = db.prepare('SELECT b.*, (SELECT COUNT(*) FROM users u WHERE u.branch_id = b.id) as user_count FROM branches b ORDER BY b.id ASC').all();
-    res.render('cabang/index', { branches });
+    res.render('cabang', { branches });
 });
 app.post('/cabang/add', isAdmin, (req, res) => {
     try {
@@ -200,7 +200,7 @@ app.get('/kasir', (req, res) => {
   const vouchers = db.prepare('SELECT * FROM vouchers WHERE is_active = 1').all();
   const branch = db.prepare('SELECT id, name FROM branches WHERE id = ?').get(branchId);
   const branches = db.prepare('SELECT id, name FROM branches WHERE is_active = 1 ORDER BY id ASC').all();
-  res.render('kasir/index', { products, settings, vouchers, branch, branches });
+  res.render('kasir', { products, settings, vouchers, branch, branches });
 });
 
 app.post('/api/checkout', (req, res) => {
@@ -284,7 +284,7 @@ app.get('/produk', isManagerOrAdmin, (req, res) => {
       FROM stock_per_branch spb JOIN branches b ON b.id = spb.branch_id ORDER BY b.id ASC`).all();
   const categories = db.prepare('SELECT * FROM categories').all();
   const branches = db.prepare('SELECT * FROM branches ORDER BY id ASC').all();
-  res.render('produk/index', { products, categories, stocks, branches, branchId });
+  res.render('produk', { products, categories, stocks, branches, branchId });
 });
 app.post('/produk/add', isManagerOrAdmin, (req, res) => {
     try {
@@ -350,7 +350,7 @@ app.get('/opname', isManagerOrAdmin, (req, res) => {
         .all(...(isAdminUser ? [] : [user.branch_id || 1]));
     const branches = db.prepare('SELECT * FROM branches WHERE is_active = 1 ORDER BY id ASC').all();
     const branch = db.prepare('SELECT id, name FROM branches WHERE id = ?').get(branchId);
-    res.render('opname/index', { products, opnames, branches, branchId, branch });
+    res.render('opname', { products, opnames, branches, branchId, branch });
 });
 app.post('/opname/add', isManagerOrAdmin, (req, res) => {
     try {
@@ -407,7 +407,7 @@ app.get('/stok', isManagerOrAdmin, (req, res) => {
         return acc;
     }, { totalUnits: 0, stockValue: 0, lowStock: 0 });
 
-    res.render('stok/index', { rows, movements, branches, branchId, ringkasan, isAdminUser });
+    res.render('stok', { rows, movements, branches, branchId, ringkasan, isAdminUser });
 });
 app.post('/stok/adjust', isManagerOrAdmin, (req, res) => {
     const backTo = req.body.return_to === 'produk' ? '/produk' : '/stok';
@@ -470,7 +470,7 @@ app.get('/transfer', isManagerOrAdmin, (req, res) => {
         WHERE p.is_active = 1 AND spb.stock > 0 ORDER BY p.name ASC`).all(getBranchScope(req));
     const branches = db.prepare('SELECT * FROM branches WHERE is_active = 1 ORDER BY id ASC').all();
 
-    res.render('transfer/index', { detail, pendingForMe, products, branches, branchId: getBranchScope(req), isAdminUser });
+    res.render('transfer', { detail, pendingForMe, products, branches, branchId: getBranchScope(req), isAdminUser });
 });
 app.post('/transfer/create', isManagerOrAdmin, (req, res) => {
     try {
@@ -547,7 +547,7 @@ app.post('/transfer/cancel', isManagerOrAdmin, (req, res) => {
 // PELANGGAN CRUD
 app.get('/pelanggan', (req, res) => {
   const customers = db.prepare('SELECT * FROM customers ORDER BY id DESC').all();
-  res.render('pelanggan/index', { customers });
+  res.render('pelanggan', { customers });
 });
 app.post('/pelanggan/add', (req, res) => {
     try {
@@ -575,7 +575,7 @@ app.get('/pengeluaran', isManagerOrAdmin, (req, res) => {
     }
     query += 'ORDER BY e.id DESC';
     const expenses = db.prepare(query).all(...params);
-    res.render('pengeluaran/index', { expenses });
+    res.render('pengeluaran', { expenses });
 });
 app.post('/pengeluaran/add', isManagerOrAdmin, (req, res) => {
     try {
@@ -592,7 +592,7 @@ app.post('/pengeluaran/delete', isManagerOrAdmin, (req, res) => {
 app.get('/penggajian', isAdmin, (req, res) => {
     const users = db.prepare('SELECT id, name, role FROM users').all();
     const payrolls = db.prepare('SELECT p.*, u.name as user_name FROM payroll p LEFT JOIN users u ON p.user_id = u.id ORDER BY p.id DESC').all();
-    res.render('penggajian/index', { users, payrolls });
+    res.render('penggajian', { users, payrolls });
 });
 app.post('/penggajian/add', isAdmin, (req, res) => {
     try {
@@ -607,7 +607,7 @@ app.post('/penggajian/delete', isAdmin, (req, res) => {
 // VOUCHER (Admin Only)
 app.get('/voucher', isAdmin, (req, res) => {
     const vouchers = db.prepare('SELECT * FROM vouchers ORDER BY id DESC').all();
-    res.render('voucher/index', { vouchers });
+    res.render('voucher', { vouchers });
 });
 app.post('/voucher/add', isAdmin, (req, res) => {
     try {
@@ -671,7 +671,7 @@ app.get('/laporan', (req, res) => {
     const labaBersih = labaKotor - expTotal - payTotal;
     const settings = db.prepare('SELECT * FROM settings LIMIT 1').get();
 
-    res.render('laporan/index', { sales, filter, totalRp, totalTx: sales.length, totalCogs, labaKotor, expTotal, payTotal, labaBersih, settings });
+    res.render('laporan', { sales, filter, totalRp, totalTx: sales.length, totalCogs, labaKotor, expTotal, payTotal, labaBersih, settings });
 });
 
 // PENGGUNA (Manager Cabang Bisa Buat Akun Kasir Cabangnya)
@@ -686,7 +686,7 @@ app.get('/pengguna', isManagerOrAdmin, (req, res) => {
     query += 'ORDER BY u.id ASC';
     const users = db.prepare(query).all(...params);
     const branches = db.prepare('SELECT * FROM branches WHERE is_active = 1').all();
-    res.render('pengguna/index', { users, branches });
+    res.render('pengguna', { users, branches });
 });
 
 app.post('/pengguna/add', isManagerOrAdmin, (req, res) => {
@@ -727,7 +727,7 @@ app.post('/pengguna/delete', isManagerOrAdmin, (req, res) => {
 // PENGATURAN TOKO
 app.get('/pengaturan', isAdmin, (req, res) => {
     const settings = db.prepare('SELECT * FROM settings LIMIT 1').get();
-    res.render('pengaturan/index', { settings });
+    res.render('pengaturan', { settings });
 });
 
 app.post('/pengaturan/update', isAdmin, upload.single('logo'), (req, res) => {
@@ -749,7 +749,7 @@ app.post('/pengaturan/update', isAdmin, upload.single('logo'), (req, res) => {
 
 app.get('/pengaturan/voucher', isAdmin, (req, res) => {
     const settings = db.prepare('SELECT * FROM settings LIMIT 1').get();
-    res.render('pengaturan/voucher', { settings, error: req.query.error || null, saved: req.query.saved === '1' });
+    res.render('pengaturan-voucher', { settings, error: req.query.error || null, saved: req.query.saved === '1' });
 });
 
 app.post('/pengaturan/voucher/update', isAdmin, (req, res) => {

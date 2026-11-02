@@ -1,4 +1,4 @@
-<%- include('../layouts/header') %>
+<%- include('layout-header') %>
 <div class='row g-0'>
   <div class='col-md-8 p-3 bg-light'>
     <div class='d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2'>
@@ -278,4 +278,4 @@ if (branchSwitcher) {
 document.addEventListener('keydown', (e) => { if(e.key==='F2'){e.preventDefault(); document.getElementById('barcode-input').focus();} else if(e.key==='F4'){e.preventDefault(); showPaymentModal();} });
 updateTotals();
 </script>
-<%- include('../layouts/footer') %>
+<%- include('layout-footer') %>

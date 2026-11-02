@@ -1,4 +1,4 @@
-<%- include('../layouts/header') %>
+<%- include('layout-header') %>
 <%
   const stockMap = {};
   stocks.forEach(s => { (stockMap[s.product_id] = stockMap[s.product_id] || []).push(s); });
@@ -198,4 +198,4 @@ function editProduct(p) {
     new bootstrap.Modal(document.getElementById('modalEditProduct')).show();
 }
 </script>
-<%- include('../layouts/footer') %>
+<%- include('layout-footer') %>

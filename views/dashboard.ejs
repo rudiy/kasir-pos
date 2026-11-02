@@ -1,4 +1,4 @@
-<%- include('../layouts/header') %>
+<%- include('layout-header') %>
 <div class='p-4'>
   <div class='d-flex justify-content-between align-items-center mb-3'>
     <div>
@@ -104,4 +104,4 @@ async function fetchRealtimeStats() {
 
 setInterval(fetchRealtimeStats, 5000);
 </script>
-<%- include('../layouts/footer') %>
+<%- include('layout-footer') %>

@@ -1,4 +1,4 @@
-<%- include('../layouts/header') %>
+<%- include('layout-header') %>
 <%
   const activeBranch = branches.find(b => b.id === branchId) || {};
 %>
@@ -124,4 +124,4 @@ if (branchSwitcher) {
     });
 }
 </script>
-<%- include('../layouts/footer') %>
+<%- include('layout-footer') %>
