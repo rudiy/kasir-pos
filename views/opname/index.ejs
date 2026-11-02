@@ -1,18 +1,29 @@
 <%- include('../layouts/header') %>
 <div class='p-4'>
-  <div class='d-flex justify-content-between mb-3'>
-    <h2>Stok Opname (Penyesuaian Stok)</h2>
-    <button class='btn btn-primary' data-bs-toggle='modal' data-bs-target='#modalOpname' style='background-color: var(--navy);'>+ Input Opname</button>
+  <div class='d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2'>
+    <div>
+      <h2 class='mb-0'>Stok Opname <small class='text-muted fs-6'>— <%= branch ? branch.name : 'Cabang' %></small></h2>
+      <small class='text-muted'>Hitung fisik dicatat per cabang, jadi selisih cabang lain tidak ikut berubah.</small>
+    </div>
+    <div class='d-flex gap-2 align-items-center'>
+      <% if (isAdmin) { %>
+        <select id='branchSwitcher' class='form-select form-select-sm'>
+          <% branches.forEach(b => { %><option value='<%= b.id %>' <%= b.id === branchId ? "selected" : "" %>><%= b.name %></option><% }) %>
+        </select>
+      <% } %>
+      <button class='btn btn-primary' data-bs-toggle='modal' data-bs-target='#modalOpname' style='background-color: var(--navy);'>+ Input Opname</button>
+    </div>
   </div>
   <div class='card shadow-sm'>
     <div class='card-body table-responsive'>
       <table class='table table-hover align-middle'>
-        <thead class='table-light'><tr><th>Tgl</th><th>Produk</th><th>Stok Sistem</th><th>Stok Fisik (Real)</th><th>Selisih</th><th>Petugas</th><th>Catatan</th></tr></thead>
+        <thead class='table-light'><tr><th>Tgl</th><th>Produk</th><% if (isAdmin) { %><th>Cabang</th><% } %><th>Stok Sistem</th><th>Stok Fisik (Real)</th><th>Selisih</th><th>Petugas</th><th>Catatan</th></tr></thead>
         <tbody>
           <% if(opnames.length > 0) { opnames.forEach(o => { %>
             <tr>
               <td><%= new Date(o.date).toLocaleString('id-ID') %></td>
               <td><strong><%= o.product_name %></strong></td>
+              <% if (isAdmin) { %><td><%= o.branch_name || '-' %></td><% } %>
               <td><%= o.stock_system %></td>
               <td><strong><%= o.stock_real %></strong></td>
               <td>
@@ -23,7 +34,7 @@
               <td><%= o.user_name %></td>
               <td><%= o.notes || '-' %></td>
             </tr>
-          <% }) } else { %><tr><td colspan='7' class='text-center'>Belum ada riwayat stok opname.</td></tr><% } %>
+          <% }) } else { %><tr><td colspan='8' class='text-center'>Belum ada riwayat stok opname.</td></tr><% } %>
         </tbody>
       </table>
     </div>
@@ -36,17 +47,19 @@
     <form action='/opname/add' method='POST' class='modal-content'>
       <div class='modal-header'><h5 class='modal-title'>Input Stok Opname</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
       <div class='modal-body'>
+        <input type='hidden' name='branch_id' value='<%= branchId %>'>
         <div class='mb-3'>
-          <label>Pilih Produk</label>
-          <select name='product_id' class='form-select' required>
+          <label>Pilih Produk <small class='text-muted'>(<%= branch ? branch.name : 'cabang aktif' %>)</small></label>
+          <select name='product_id' id='opname_product' class='form-select' required onchange='previewSelisih()'>
             <% products.forEach(p => { %>
-                <option value='<%= p.id %>'><%= p.name %> (Stok Sistem: <%= p.stock %>)</option>
+                <option value='<%= p.id %>' data-stock='<%= p.stock %>'><%= p.name %> (Stok Sistem: <%= p.stock %>)</option>
             <% }) %>
           </select>
         </div>
         <div class='mb-3'>
           <label>Jumlah Stok Fisik (Real)</label>
-          <input type='number' name='stock_real' class='form-control' required placeholder='Ketik hasil hitung fisik di toko'>
+          <input type='number' name='stock_real' id='opname_real' class='form-control' min='0' required placeholder='Ketik hasil hitung fisik di toko' oninput='previewSelisih()'>
+          <div class='form-text' id='selisihHint'></div>
         </div>
         <div class='mb-3'>
           <label>Catatan / Keterangan</label>
@@ -57,4 +70,23 @@
     </form>
   </div>
 </div>
+
+<script>
+const branchSwitcher = document.getElementById('branchSwitcher');
+if (branchSwitcher) {
+    branchSwitcher.addEventListener('change', (e) => { window.location.href = '/opname?branch_id=' + e.target.value; });
+}
+
+function previewSelisih() {
+    const select = document.getElementById('opname_product');
+    const option = select.options[select.selectedIndex];
+    const system = option ? parseInt(option.dataset.stock) || 0 : 0;
+    const real = parseInt(document.getElementById('opname_real').value);
+    const hint = document.getElementById('selisihHint');
+    if (!Number.isInteger(real)) { hint.innerText = ''; return; }
+    const diff = real - system;
+    hint.innerText = diff === 0 ? 'Tidak ada selisih.' : (diff > 0 ? 'Selisih +' + diff + ' (stok akan bertambah).' : 'Selisih ' + diff + ' (stok akan berkurang).');
+    hint.className = 'form-text ' + (diff === 0 ? 'text-muted' : (diff > 0 ? 'text-success' : 'text-danger'));
+}
+</script>
 <%- include('../layouts/footer') %>

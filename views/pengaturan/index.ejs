@@ -6,7 +6,7 @@
         <div class='card shadow-sm'>
             <div class='card-header bg-white fw-bold'><i class='bi bi-shop'></i> Identitas Toko (Tercetak di Struk)</div>
             <div class='card-body'>
-                <form action='/pengaturan/update' method='POST'>
+                <form action='/pengaturan/update' method='POST' enctype='multipart/form-data'>
                     <input type='hidden' name='id' value='<%= settings.id %>'>
                     <div class='mb-3'>
                         <label class='form-label'>Nama Toko</label>
@@ -23,6 +23,18 @@
                     <div class='mb-3'>
                         <label class='form-label'>Pesan Penutup di Struk (Footer)</label>
                         <input type='text' name='receipt_footer' class='form-control' value='<%= settings.receipt_footer || "Terima Kasih Atas Kunjungan Anda" %>'>
+                    </div>
+                    <div class='mb-3'>
+                        <label class='form-label'>Catatan di Atas Footer Struk</label>
+                        <textarea name='receipt_note' class='form-control' rows='2'><%= settings.receipt_note || "" %></textarea>
+                    </div>
+                    <div class='mb-3'>
+                        <label class='form-label'>Logo Toko</label>
+                        <% if (settings.logo) { %>
+                            <div class='mb-2'><img src='<%= settings.logo %>' alt='Logo' class='bg-white rounded p-2' style='max-height:60px;'></div>
+                        <% } %>
+                        <input type='file' name='logo' class='form-control' accept='image/*'>
+                        <div class='form-text'>Biarkan kosong jika tidak ingin mengganti logo.</div>
                     </div>
                     <button type='submit' class='btn btn-primary w-100' style='background-color: var(--navy);'>Simpan Pengaturan</button>
                 </form>

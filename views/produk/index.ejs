@@ -1,33 +1,88 @@
 <%- include('../layouts/header') %>
+<%
+  const stockMap = {};
+  stocks.forEach(s => { (stockMap[s.product_id] = stockMap[s.product_id] || []).push(s); });
+  const currentBranch = branches.find(b => b.id === branchId) || {};
+%>
 <div class='p-4'>
-  <div class='d-flex justify-content-between mb-3'>
-    <h2>Data Produk</h2>
-    <button class='btn btn-primary' onclick='openAddProductModal()' style='background-color: var(--navy);'>+ Tambah Produk</button>
+  <div class='d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2'>
+    <div>
+      <h2 class='mb-0'>Data Produk</h2>
+      <small class='text-muted'>Stok dihitung per cabang. Kolom Stok Cabang memakai cabang <strong><%= currentBranch.name || branchId %></strong>.</small>
+    </div>
+    <div class='d-flex gap-2 align-items-center'>
+      <% if (isAdmin) { %>
+        <select id='branchSwitcher' class='form-select form-select-sm'>
+          <% branches.forEach(b => { %><option value='<%= b.id %>' <%= b.id === branchId ? "selected" : "" %>><%= b.name %></option><% }) %>
+        </select>
+      <% } %>
+      <button class='btn btn-primary' onclick='openAddProductModal()' style='background-color: var(--navy);'>+ Tambah Produk</button>
+    </div>
   </div>
   <div class='card shadow-sm'>
     <div class='card-body table-responsive'>
       <table class='table table-hover align-middle'>
-        <thead class='table-light'><tr><th>Barcode / SKU</th><th>Nama</th><th>Kategori</th><th>Harga Beli</th><th>Harga Jual</th><th>Stok</th><th class='text-center'>Aksi</th></tr></thead>
+        <thead class='table-light'>
+          <tr>
+            <th></th>
+            <th>Barcode / SKU</th>
+            <th>Nama</th>
+            <th>Kategori</th>
+            <th>Harga Beli</th>
+            <th>Harga Jual</th>
+            <th>Stok Cabang</th>
+            <th>Total Cabang</th>
+            <th>Status</th>
+            <th class='text-center'>Aksi</th>
+          </tr>
+        </thead>
         <tbody>
-          <% if(products.length > 0) { products.forEach(p => { %>
+          <% if(products.length > 0) { products.forEach(p => { const rows = stockMap[p.id] || []; %>
             <tr>
+              <td><button class='btn btn-sm btn-outline-secondary' onclick='toggleStockDetail(<%= p.id %>)' title='Sebaran per cabang'><i class='bi bi-geo-alt'></i></button></td>
               <td><code><%= p.barcode || '-' %></code></td>
               <td><strong><%= p.name %></strong></td>
               <td><%= p.category || '-' %></td>
-              <td>Rp <%= p.price_buy.toLocaleString('id-ID') %></td>
-              <td>Rp <%= p.price_sell.toLocaleString('id-ID') %></td>
+              <td>Rp <%= (p.price_buy || 0).toLocaleString('id-ID') %></td>
+              <td>Rp <%= (p.price_sell || 0).toLocaleString('id-ID') %></td>
+              <td><span class='badge <%= p.branch_stock === 0 ? "bg-secondary" : (p.branch_stock <= p.min_stock ? "bg-danger" : "bg-success") %>'><%= p.branch_stock %></span></td>
+              <td><%= p.total_stock %></td>
               <td>
-                <span class='badge <%= p.stock <= p.min_stock ? "bg-danger" : "bg-success" %>'><%= p.stock %></span>
+                <form action='/produk/toggle-status' method='POST' class='d-inline'>
+                  <input type='hidden' name='id' value='<%= p.id %>'>
+                  <input type='hidden' name='is_active' value='<%= p.is_active === 1 ? 0 : 1 %>'>
+                  <button type='submit' class='btn btn-sm <%= p.is_active === 1 ? "btn-success" : "btn-outline-danger" %>'><%= p.is_active === 1 ? "Aktif" : "Nonaktif" %></button>
+                </form>
               </td>
               <td class='text-center'>
-                <button class='btn btn-sm btn-warning me-1' onclick='editProduct(<%= JSON.stringify(p) %>)'><i class='bi bi-pencil'></i></button>
+                <button class='btn btn-sm btn-warning me-1' onclick='editProduct(<%= JSON.stringify(p).replace(/</g, "\\u003c") %>)'><i class='bi bi-pencil'></i></button>
                 <form action='/produk/delete' method='POST' class='d-inline' onsubmit='return confirm("Yakin ingin menghapus produk ini?")'>
                   <input type='hidden' name='id' value='<%= p.id %>'>
                   <button type='submit' class='btn btn-sm btn-danger'><i class='bi bi-trash'></i></button>
                 </form>
               </td>
             </tr>
-          <% }) } else { %><tr><td colspan='7' class='text-center'>Belum ada produk.</td></tr><% } %>
+            <tr id='stock-detail-<%= p.id %>' style='display:none'>
+              <td colspan='10' class='bg-light'>
+                <div class='d-flex flex-wrap gap-3'>
+                  <% rows.forEach(r => { %>
+                    <div class='border rounded p-2' style='min-width: 210px;'>
+                      <div class='small fw-bold'><%= r.branch_name %></div>
+                      <div>Stok <strong class='<%= r.stock <= r.min_stock ? "text-danger" : "text-success" %>'><%= r.stock %></strong> <small class='text-muted'>(min <%= r.min_stock %>)</small></div>
+                      <% if (canUseBranch(r.branch_id)) { %>
+                        <form action='/stok/adjust' method='POST' class='mt-2 d-flex gap-1'>
+                          <input type='hidden' name='product_id' value='<%= p.id %>'>
+                          <input type='hidden' name='branch_id' value='<%= r.branch_id %>'>
+                          <input type='number' name='stock_real' class='form-control form-control-sm' value='<%= r.stock %>' min='0' required style='width:80px;'>
+                          <button type='submit' class='btn btn-sm btn-outline-primary'>Koreksi</button>
+                        </form>
+                      <% } %>
+                    </div>
+                  <% }) %>
+                </div>
+              </td>
+            </tr>
+          <% }) } else { %><tr><td colspan='10' class='text-center'>Belum ada produk.</td></tr><% } %>
         </tbody>
       </table>
     </div>
@@ -57,7 +112,21 @@
             <div class='col-6 mb-2'><label class='form-label'>Harga Beli</label><input type='number' name='price_buy' class='form-control' required placeholder='0'></div>
             <div class='col-6 mb-2'><label class='form-label'>Harga Jual</label><input type='number' name='price_sell' class='form-control' required placeholder='0'></div>
         </div>
-        <div class='mb-2'><label class='form-label'>Stok Awal</label><input type='number' name='stock' class='form-control' required value='10'></div>
+        <div class='row'>
+          <div class='col-6 mb-2'>
+            <label class='form-label'>Cabang Stok Awal</label>
+            <% if (isAdmin) { %>
+              <select name='branch_id' class='form-select'>
+                <% branches.filter(b => b.is_active === 1).forEach(b => { %><option value='<%= b.id %>'><%= b.name %></option><% }) %>
+              </select>
+            <% } else { %>
+              <input type='text' class='form-control' value='<%= (branches.find(b => b.id === user.branch_id) || {}).name %>' readonly>
+            <% } %>
+          </div>
+          <div class='col-6 mb-2'><label class='form-label'>Stok Awal</label><input type='number' name='stock' class='form-control' required value='10' min='0'></div>
+        </div>
+        <div class='mb-2'><label class='form-label'>Batas Stok Menipis (semua cabang)</label><input type='number' name='min_stock' class='form-control' value='5' min='0'></div>
+        <div class='form-text'>Cabang lain otomatis mendapat stok 0 dan bisa diisi lewat halaman Stok atau Opname.</div>
       </div>
       <div class='modal-footer'><button type='submit' class='btn btn-primary'>Simpan Produk</button></div>
     </form>
@@ -68,7 +137,13 @@
 <div class='modal fade' id='modalEditProduct' tabindex='-1'>
   <div class='modal-dialog'>
     <form action='/produk/edit' method='POST' class='modal-content'>
-      <div class='modal-header'><h5 class='modal-title'>Edit Produk</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-header'>
+        <div>
+          <h5 class='modal-title mb-0'>Edit Produk</h5>
+          <small class='text-muted'>Stok tidak diubah di sini — pakai sebaran per cabang atau halaman Opname.</small>
+        </div>
+        <button type='button' class='btn-close' data-bs-dismiss='modal'></button>
+      </div>
       <div class='modal-body'>
         <input type='hidden' name='id' id='edit_id'>
         <div class='mb-2'><label class='form-label'>Barcode / SKU</label><input type='text' name='barcode' id='edit_barcode' class='form-control' required></div>
@@ -82,7 +157,7 @@
             <div class='col-6 mb-2'><label class='form-label'>Harga Beli</label><input type='number' name='price_buy' id='edit_price_buy' class='form-control' required></div>
             <div class='col-6 mb-2'><label class='form-label'>Harga Jual</label><input type='number' name='price_sell' id='edit_price_sell' class='form-control' required></div>
         </div>
-        <div class='mb-2'><label class='form-label'>Stok Awal</label><input type='number' name='stock' id='edit_stock' class='form-control' required></div>
+        <div class='mb-2'><label class='form-label'>Stok Saat Ini</label><input type='text' class='form-control' id='edit_stock_display' readonly></div>
       </div>
       <div class='modal-footer'><button type='submit' class='btn btn-warning'>Update Produk</button></div>
     </form>
@@ -100,6 +175,18 @@ function openAddProductModal() {
     new bootstrap.Modal(document.getElementById('modalAddProduct')).show();
 }
 
+function toggleStockDetail(id) {
+    const row = document.getElementById('stock-detail-' + id);
+    row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+}
+
+const branchSwitcher = document.getElementById('branchSwitcher');
+if (branchSwitcher) {
+    branchSwitcher.addEventListener('change', (e) => {
+        window.location.href = '/produk?branch_id=' + e.target.value;
+    });
+}
+
 function editProduct(p) {
     document.getElementById('edit_id').value = p.id;
     document.getElementById('edit_barcode').value = p.barcode;
@@ -107,7 +194,7 @@ function editProduct(p) {
     document.getElementById('edit_category').value = p.category_id;
     document.getElementById('edit_price_buy').value = p.price_buy;
     document.getElementById('edit_price_sell').value = p.price_sell;
-    document.getElementById('edit_stock').value = p.stock;
+    document.getElementById('edit_stock_display').value = 'Stok cabang ini: ' + p.branch_stock + ' | semua cabang: ' + p.total_stock;
     new bootstrap.Modal(document.getElementById('modalEditProduct')).show();
 }
 </script>

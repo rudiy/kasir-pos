@@ -1,6 +1,14 @@
 <%- include('../layouts/header') %>
 <div class='row g-0'>
   <div class='col-md-8 p-3 bg-light'>
+    <div class='d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2'>
+      <div class='small text-muted'>Stok yang tampil &amp; berkurang: <strong><%= branch ? branch.name : 'cabang Anda' %></strong></div>
+      <% if (isAdmin) { %>
+        <select id='branchSwitcher' class='form-select form-select-sm' style='max-width: 220px;'>
+          <% branches.forEach(b => { %><option value='<%= b.id %>' <%= b.id === branch.id ? "selected" : "" %>><%= b.name %></option><% }) %>
+        </select>
+      <% } %>
+    </div>
     <input type='text' id='barcode-input' class='form-control mb-3 p-3 shadow-sm' placeholder='Scan Barcode atau Cari Produk (F2)...' autofocus>
     <div class='row g-2' id='product-grid'>
       <% products.forEach(p => { %>
@@ -21,7 +29,10 @@
       <div class='text-center text-muted mt-5'>Keranjang Kosong</div>
     </div>
     <div class='p-3 bg-light border-top'>
-      <div class='d-flex justify-content-between mb-2'><strong>Total:</strong><strong class='fs-4 text-primary' id='cart-total'>Rp 0</strong></div>
+      <div class='d-flex justify-content-between mb-1 small'><span>Subtotal</span><span id='cart-subtotal'>Rp 0</span></div>
+      <div class='d-flex justify-content-between mb-1 small text-danger' id='cart-discount-row' style='display:none'><span>Diskon</span><span id='cart-discount'>Rp 0</span></div>
+      <div class='d-flex justify-content-between mb-1 small' id='cart-tax-row' style='display:none'><span>Pajak (<span id='cart-tax-rate'>0</span>%)</span><span id='cart-tax'>Rp 0</span></div>
+      <div class='d-flex justify-content-between'><strong>Total:</strong><strong class='fs-4 text-primary' id='cart-total'>Rp 0</strong></div>
       <button class='btn btn-success w-100 py-3 fw-bold' onclick='showPaymentModal()'>BAYAR (F4)</button>
     </div>
   </div>
@@ -32,16 +43,25 @@
     <div class='modal-content'>
       <div class='modal-header'><h5 class='modal-title'>Pembayaran</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
       <div class='modal-body'>
-        <h3 class='text-center text-primary mb-3' id='modal-total'>Rp 0</h3>
-        
         <div class='mb-2'>
             <label>Pilih Voucher / Diskon</label>
             <select id='voucher-select' class='form-select' onchange='applyVoucher()'>
-                <option value='0'>-- Tanpa Voucher --</option>
+                <option value=''>-- Tanpa Voucher --</option>
                 <% vouchers.forEach(v => { %>
-                    <option value='<%= v.value %>'><%= v.code %> (Potongan Rp <%= v.value.toLocaleString('id-ID') %>)</option>
+                    <option value='<%= v.id %>' data-value='<%= v.value %>' data-min='<%= v.min_transaction || 0 %>' data-code='<%= v.code %>'><%= v.code %> (Potongan Rp <%= v.value.toLocaleString('id-ID') %><% if (v.min_transaction > 0) { %>, Min. Belanja Rp <%= v.min_transaction.toLocaleString('id-ID') %><% } %>)</option>
                 <% }) %>
             </select>
+            <div class='form-text' id='voucher-hint'></div>
+        </div>
+
+        <div class='card bg-light mb-3'>
+          <div class='card-body py-2'>
+            <div class='d-flex justify-content-between small'><span>Subtotal</span><span id='pay-subtotal'>Rp 0</span></div>
+            <div class='d-flex justify-content-between small text-danger'><span>Diskon</span><span id='pay-discount'>Rp 0</span></div>
+            <div class='d-flex justify-content-between small'><span>Pajak</span><span id='pay-tax'>Rp 0</span></div>
+            <hr class='my-2'>
+            <div class='d-flex justify-content-between align-items-center'><strong>Total</strong><strong class='fs-4 text-primary' id='modal-total'>Rp 0</strong></div>
+          </div>
         </div>
 
         <div class='mb-3'>
@@ -66,10 +86,21 @@
 
 <script>
 let cart = [];
-let cartTotal = 0;
-let finalTotal = 0;
+let cartSubtotal = 0;
 let discountVal = 0;
+let taxVal = 0;
+let finalTotal = 0;
+const TAX_RATE = <%= Number(settings.tax_rate || 0) %>;
+const CURRENT_BRANCH = <%= branch ? branch.id : 'null' %>;
 const formatter = new Intl.NumberFormat('id-ID');
+
+function addToCartFromData(card) {
+  try {
+    addToCart(JSON.parse(decodeURIComponent(card.dataset.product)));
+  } catch (err) {
+    alert('Data produk tidak valid, muat ulang halaman.');
+  }
+}
 
 function addToCart(product) {
   const exist = cart.find(i => i.id === product.id);
@@ -88,12 +119,12 @@ function updateQty(id, delta) {
 
 function renderCart() {
   const container = document.getElementById('cart-items');
-  cartTotal = 0;
-  if(cart.length === 0) { container.innerHTML = '<div class="text-center text-muted mt-5">Keranjang Kosong</div>'; document.getElementById('cart-total').innerText = 'Rp 0'; return; }
+  cartSubtotal = 0;
+  if(cart.length === 0) { container.innerHTML = '<div class="text-center text-muted mt-5">Keranjang Kosong</div>'; updateTotals(); return; }
   let html = '';
   cart.forEach(item => {
     const sub = item.qty * item.price_sell;
-    cartTotal += sub;
+    cartSubtotal += sub;
     html += '<div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">' +
       '<div><div class="fw-bold">' + item.name + '</div><div class="text-muted small">Rp ' + formatter.format(item.price_sell) + ' x ' + item.qty + '</div></div>' +
       '<div class="text-end"><div class="fw-bold">Rp ' + formatter.format(sub) + '</div>' +
@@ -101,25 +132,64 @@ function renderCart() {
     '</div>';
   });
   container.innerHTML = html;
-  finalTotal = cartTotal;
-  document.getElementById('cart-total').innerText = 'Rp ' + formatter.format(cartTotal);
+  updateTotals();
+}
+
+function selectedVoucher() {
+  const select = document.getElementById('voucher-select');
+  const option = select.options[select.selectedIndex];
+  if (!option || option.value === '') return null;
+  return {
+    id: parseInt(option.value),
+    code: option.dataset.code,
+    value: parseFloat(option.dataset.value) || 0,
+    minTransaction: parseFloat(option.dataset.min) || 0
+  };
+}
+
+function updateTotals() {
+  const voucher = selectedVoucher();
+  const hint = document.getElementById('voucher-hint');
+  discountVal = 0;
+  if (voucher) {
+    if (cartSubtotal < voucher.minTransaction) {
+      hint.innerText = 'Voucher ' + voucher.code + ' belum berlaku (butuh subtotal Rp ' + formatter.format(voucher.minTransaction) + ').';
+    } else {
+      discountVal = Math.min(voucher.value, cartSubtotal);
+      hint.innerText = voucher.code + ' terpakai, potongan Rp ' + formatter.format(discountVal) + '.';
+    }
+  } else {
+    hint.innerText = '';
+  }
+
+  const afterDiscount = Math.max(0, cartSubtotal - discountVal);
+  taxVal = Math.round(afterDiscount * TAX_RATE / 100);
+  finalTotal = afterDiscount + taxVal;
+
+  document.getElementById('cart-subtotal').innerText = 'Rp ' + formatter.format(cartSubtotal);
+  document.getElementById('cart-tax-rate').innerText = TAX_RATE;
+  document.getElementById('cart-tax').innerText = 'Rp ' + formatter.format(taxVal);
+  document.getElementById('cart-discount').innerText = '- Rp ' + formatter.format(discountVal);
+  document.getElementById('cart-total').innerText = 'Rp ' + formatter.format(finalTotal);
+  document.getElementById('cart-discount-row').style.display = discountVal > 0 ? '' : 'none';
+  document.getElementById('cart-tax-row').style.display = TAX_RATE > 0 ? '' : 'none';
+
+  document.getElementById('pay-subtotal').innerText = 'Rp ' + formatter.format(cartSubtotal);
+  document.getElementById('pay-discount').innerText = '- Rp ' + formatter.format(discountVal);
+  document.getElementById('pay-tax').innerText = 'Rp ' + formatter.format(taxVal) + (TAX_RATE > 0 ? ' (' + TAX_RATE + '%)' : '');
+  document.getElementById('modal-total').innerText = 'Rp ' + formatter.format(finalTotal);
+  calculateChange();
 }
 
 function applyVoucher() {
-    discountVal = parseFloat(document.getElementById('voucher-select').value) || 0;
-    finalTotal = Math.max(0, cartTotal - discountVal);
-    document.getElementById('modal-total').innerText = 'Rp ' + formatter.format(finalTotal);
-    calculateChange();
+    updateTotals();
 }
 
 function showPaymentModal() {
   if(cart.length === 0) return alert('Keranjang kosong!');
-  discountVal = 0;
-  finalTotal = cartTotal;
-  document.getElementById('voucher-select').value = '0';
-  document.getElementById('modal-total').innerText = 'Rp ' + formatter.format(cartTotal);
+  document.getElementById('voucher-select').value = '';
   document.getElementById('payment-amount').value = '';
-  document.getElementById('payment-change').value = '';
+  updateTotals();
   new bootstrap.Modal(document.getElementById('paymentModal')).show();
 }
 
@@ -131,20 +201,21 @@ function calculateChange() {
 
 async function processCheckout() {
   const amount = parseFloat(document.getElementById('payment-amount').value) || 0;
-  if(amount < finalTotal && document.getElementById('payment-method').value === 'TUNAI') return alert('Uang pembayaran kurang!');
-  const payload = { cart: cart.map(i => ({id: i.id, qty: i.qty, price: i.price_sell})), paymentMethod: document.getElementById('payment-method').value, paymentAmount: amount, total: finalTotal };
+  if(amount < finalTotal) return alert('Uang pembayaran kurang Rp ' + formatter.format(finalTotal - amount) + '!');
+  const voucher = selectedVoucher();
+  const payload = { cart: cart.map(i => ({id: i.id, qty: i.qty})), paymentMethod: document.getElementById('payment-method').value, paymentAmount: amount, voucherId: voucher ? voucher.id : null, branchId: CURRENT_BRANCH };
   const res = await fetch('/api/checkout', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
   const data = await res.json();
-  if(data.success) { printReceipt(data.invoiceNo, amount); cart = []; renderCart(); bootstrap.Modal.getInstance(document.getElementById('paymentModal')).hide(); alert('Transaksi Berhasil!'); window.location.reload(); }
+  if(data.success) { printReceipt(data.invoiceNo, amount, data); cart = []; renderCart(); bootstrap.Modal.getInstance(document.getElementById('paymentModal')).hide(); alert('Transaksi Berhasil!'); window.location.reload(); }
   else { alert('Gagal: ' + data.error); }
 }
 
-function printReceipt(invoice, amount) {
+function printReceipt(invoice, amount, result) {
   const pa = document.getElementById('print-area');
   pa.style.display = 'block';
   const now = new Date();
   const dateStr = now.toLocaleDateString('id-ID') + ' ' + now.toLocaleTimeString('id-ID');
-  
+
   let logoHtml = '';
   <% if(settings && settings.logo) { %>
     logoHtml = '<div style="text-align:center;"><img src="<%= settings.logo %>" style="max-height:40px; margin-bottom:5px;"></div>';
@@ -152,10 +223,13 @@ function printReceipt(invoice, amount) {
 
   let h = logoHtml + '<div style="text-align:center; font-family:monospace; margin-bottom:5px;"><strong><%= settings.store_name %></strong><br><%= settings.address %><br>Telp: <%= settings.phone %><br><small>' + dateStr + '</small><br>No: ' + invoice + '</div><hr style="border-top:1px dashed #000;">';
   cart.forEach(i => { h += '<div style="display:flex; justify-content:space-between;"><span>' + i.name + ' (' + i.qty + ')</span><span>' + formatter.format(i.qty * i.price_sell) + '</span></div>'; });
-  if(discountVal > 0) h += '<div style="display:flex; justify-content:space-between; color:red;"><span>Diskon</span><span>-' + formatter.format(discountVal) + '</span></div>';
-  h += '<hr style="border-top:1px dashed #000;"><div style="display:flex; justify-content:space-between;"><strong>Total</strong><strong>' + formatter.format(finalTotal) + '</strong></div>';
+  h += '<hr style="border-top:1px dashed #000;">';
+  h += '<div style="display:flex; justify-content:space-between;"><span>Subtotal</span><span>' + formatter.format(result.subtotal) + '</span></div>';
+  if(result.discount > 0) h += '<div style="display:flex; justify-content:space-between; color:red;"><span>Diskon</span><span>-' + formatter.format(result.discount) + '</span></div>';
+  if(result.tax > 0) h += '<div style="display:flex; justify-content:space-between;"><span>Pajak <%= Number(settings.tax_rate || 0) %>%</span><span>' + formatter.format(result.tax) + '</span></div>';
+  h += '<div style="display:flex; justify-content:space-between;"><strong>Total</strong><strong>' + formatter.format(result.total) + '</strong></div>';
   h += '<div style="display:flex; justify-content:space-between;"><span>Bayar</span><span>' + formatter.format(amount) + '</span></div>';
-  h += '<div style="display:flex; justify-content:space-between;"><span>Kembali</span><span>' + formatter.format(amount - finalTotal) + '</span></div>';
+  h += '<div style="display:flex; justify-content:space-between;"><span>Kembali</span><span>' + formatter.format(amount - result.total) + '</span></div>';
   h += '<hr style="border-top:1px dashed #000;"><div style="text-align:center; font-size:10px;"><strong><%= settings.receipt_note || "NOTED: Barang yang sudah dibeli tidak bisa dikembalikan." %></strong><br><%= settings.receipt_footer || "Terima Kasih!" %></div>';
   pa.innerHTML = h;
   document.body.classList.add('print-receipt-mode');
@@ -164,6 +238,44 @@ function printReceipt(invoice, amount) {
   pa.style.display = 'none';
 }
 
+function filterProductGrid(keyword) {
+  const term = (keyword || '').toLowerCase();
+  document.querySelectorAll('#product-grid > div').forEach(col => {
+    col.style.display = !term || col.textContent.toLowerCase().includes(term) ? '' : 'none';
+  });
+}
+
+const barcodeInput = document.getElementById('barcode-input');
+barcodeInput.addEventListener('input', (e) => filterProductGrid(e.target.value.trim()));
+barcodeInput.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const term = barcodeInput.value.trim().toLowerCase();
+  if (!term) { filterProductGrid(''); return; }
+
+  const cards = Array.from(document.querySelectorAll('#product-grid .product-card'));
+  const parsed = cards.map(card => { try { return JSON.parse(decodeURIComponent(card.dataset.product)); } catch (err) { return null; } }).filter(Boolean);
+  const exact = parsed.find(p => String(p.barcode) === term);
+  const matches = parsed.filter(p => String(p.barcode).includes(term) || p.name.toLowerCase().includes(term));
+
+  if (exact) { addToCart(exact); barcodeInput.value = ''; filterProductGrid(''); }
+  else if (matches.length === 1) { addToCart(matches[0]); barcodeInput.value = ''; filterProductGrid(''); }
+  else if (matches.length > 1) { filterProductGrid(term); }
+  else { alert('Produk "' + barcodeInput.value + '" tidak ditemukan.'); }
+});
+
+const branchSwitcher = document.getElementById('branchSwitcher');
+if (branchSwitcher) {
+    branchSwitcher.addEventListener('change', (e) => {
+        if (cart.length > 0 && !confirm('Keranjang belum dibayar. Ganti cabang tetap menghapus isi keranjang?')) {
+            e.target.value = String(CURRENT_BRANCH);
+            return;
+        }
+        window.location.href = '/kasir?branch_id=' + e.target.value;
+    });
+}
+
 document.addEventListener('keydown', (e) => { if(e.key==='F2'){e.preventDefault(); document.getElementById('barcode-input').focus();} else if(e.key==='F4'){e.preventDefault(); showPaymentModal();} });
+updateTotals();
 </script>
 <%- include('../layouts/footer') %>

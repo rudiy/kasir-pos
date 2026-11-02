@@ -25,12 +25,17 @@
     
     <a href='/' class='<%= typeof path !== "undefined" && path === "/" ? "bg-secondary" : "" %>'><i class='bi bi-speedometer2 me-2'></i> Dashboard</a>
     <a href='/kasir' class='<%= typeof path !== "undefined" && path === "/kasir" ? "bg-secondary" : "" %>'><i class='bi bi-calculator me-2'></i> Kasir (POS)</a>
-    <a href='/produk' class='<%= typeof path !== "undefined" && path === "/produk" ? "bg-secondary" : "" %>'><i class='bi bi-box-seam me-2'></i> Data Produk</a>
-    <a href='/opname' class='<%= typeof path !== "undefined" && path === "/opname" ? "bg-secondary" : "" %>'><i class='bi bi-clipboard-check me-2'></i> Stok Opname</a>
     <a href='/pelanggan' class='<%= typeof path !== "undefined" && path === "/pelanggan" ? "bg-secondary" : "" %>'><i class='bi bi-people me-2'></i> Pelanggan</a>
     <a href='/laporan' class='<%= typeof path !== "undefined" && path === "/laporan" ? "bg-secondary" : "" %>'><i class='bi bi-file-earmark-bar-graph me-2'></i> Laporan Penjualan</a>
 
     <% if(isManagerOrAdmin) { %>
+        <hr class='text-secondary'>
+        <div class='text-secondary small fw-bold mb-2'>STOK BARANG</div>
+        <a href='/stok' class='<%= typeof path !== "undefined" && path === "/stok" ? "bg-secondary" : "" %>'><i class='bi bi-clipboard-data me-2'></i> Laporan Stok</a>
+        <a href='/transfer' class='<%= typeof path !== "undefined" && path === "/transfer" ? "bg-secondary" : "" %>'><i class='bi bi-truck me-2'></i> Transfer Antar Cabang</a>
+        <a href='/produk' class='<%= typeof path !== "undefined" && path === "/produk" ? "bg-secondary" : "" %>'><i class='bi bi-box-seam me-2'></i> Data Produk</a>
+        <a href='/opname' class='<%= typeof path !== "undefined" && path === "/opname" ? "bg-secondary" : "" %>'><i class='bi bi-clipboard-check me-2'></i> Stok Opname</a>
+
         <hr class='text-secondary'>
         <div class='text-secondary small fw-bold mb-2'><%= isAdmin ? "SUPER ADMIN AREA" : "MANAGER CABANG AREA" %></div>
         <a href='/pengeluaran' class='<%= typeof path !== "undefined" && path === "/pengeluaran" ? "bg-secondary" : "" %>'><i class='bi bi-wallet2 me-2'></i> Pengeluaran Operasional</a>
@@ -41,6 +46,7 @@
         <a href='/cabang' class='<%= typeof path !== "undefined" && path === "/cabang" ? "bg-secondary" : "" %>'><i class='bi bi-building me-2'></i> Cabang Toko</a>
         <a href='/penggajian' class='<%= typeof path !== "undefined" && path === "/penggajian" ? "bg-secondary" : "" %>'><i class='bi bi-cash-stack me-2'></i> Penggajian Gaji</a>
         <a href='/voucher' class='<%= typeof path !== "undefined" && path === "/voucher" ? "bg-secondary" : "" %>'><i class='bi bi-ticket-perforated me-2'></i> Voucher / Diskon</a>
+        <a href='/pengaturan/voucher' class='<%= typeof path !== "undefined" && path === "/pengaturan/voucher" ? "bg-secondary" : "" %>'><i class='bi bi-percent me-2'></i> Pajak &amp; Voucher</a>
         <a href='/pengaturan' class='<%= typeof path !== "undefined" && path === "/pengaturan" ? "bg-secondary" : "" %>'><i class='bi bi-gear me-2'></i> Pengaturan Toko</a>
     <% } %>
 

@@ -1,0 +1,127 @@
+<%- include('../layouts/header') %>
+<%
+  const activeBranch = branches.find(b => b.id === branchId) || {};
+%>
+<div class='p-4'>
+  <div class='d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2'>
+    <div>
+      <h2 class='mb-0'>Laporan Stok</h2>
+      <small class='text-muted'>Posisi stok, barang menipis, dan riwayat pergerakan barang per cabang.</small>
+    </div>
+    <div class='d-flex gap-2'>
+      <% if (isAdminUser) { %>
+        <select id='branchSwitcher' class='form-select form-select-sm'>
+          <% branches.forEach(b => { %><option value='<%= b.id %>' <%= b.id === branchId ? "selected" : "" %>><%= b.name %></option><% }) %>
+        </select>
+      <% } %>
+    </div>
+  </div>
+
+  <div class='row g-3 mb-3'>
+    <div class='col-md-4'>
+      <div class='card shadow-sm'><div class='card-body'>
+        <div class='text-muted small'>Total Unit <% if (isAdminUser) { %>(semua cabang)<% } else { %>(<%= activeBranch.name %>)<% } %></div>
+        <div class='fs-3 fw-bold'><%= ringkasan.totalUnits %></div>
+      </div></div>
+    </div>
+    <div class='col-md-4'>
+      <div class='card shadow-sm'><div class='card-body'>
+        <div class='text-muted small'>Nilai Stok (HPP)</div>
+        <div class='fs-3 fw-bold'>Rp <%= ringkasan.stockValue.toLocaleString('id-ID') %></div>
+      </div></div>
+    </div>
+    <div class='col-md-4'>
+      <div class='card shadow-sm'><div class='card-body'>
+        <div class='text-muted small'>Barang Menipis / Habis</div>
+        <div class='fs-3 fw-bold <%= ringkasan.lowStock > 0 ? "text-danger" : "text-success" %>'><%= ringkasan.lowStock %></div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class='card shadow-sm mb-4'>
+    <div class='card-header bg-white fw-bold'><i class='bi bi-clipboard-check'></i> Posisi Stok</div>
+    <div class='card-body table-responsive'>
+      <table class='table table-hover align-middle'>
+        <thead class='table-light'>
+          <tr>
+            <th>Produk</th>
+            <% if (isAdminUser) { %><th>Cabang</th><% } %>
+            <th>Stok</th>
+            <th>Min</th>
+            <th>Status</th>
+            <th>Nilai HPP</th>
+            <th>Terakhir Diubah</th>
+            <th class='text-center'>Koreksi &amp; Batas Min</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (rows.length > 0) { rows.forEach(r => { %>
+            <tr>
+              <td><strong><%= r.product_name %></strong><br><small class='text-muted'><code><%= r.barcode || '-' %></code></small></td>
+              <% if (isAdminUser) { %><td><span class='badge bg-secondary'><%= r.branch_name %></span></td><% } %>
+              <td class='fw-bold'><%= r.stock %></td>
+              <td><%= r.min_stock %></td>
+              <td>
+                <% if (r.stock === 0) { %><span class='badge bg-secondary'>Habis</span>
+                <% } else if (r.is_low) { %><span class='badge bg-danger'>Menipis</span>
+                <% } else { %><span class='badge bg-success'>Aman</span><% } %>
+              </td>
+              <td>Rp <%= (r.stock * (r.price_buy || 0)).toLocaleString('id-ID') %></td>
+              <td><small class='text-muted'><%= new Date(r.updated_at).toLocaleString('id-ID') %></small></td>
+              <td>
+                <% if (canUseBranch(r.branch_id)) { %>
+                  <div class='d-flex gap-1 flex-wrap'>
+                    <form action='/stok/adjust' method='POST' class='d-flex gap-1'>
+                      <input type='hidden' name='product_id' value='<%= r.product_id %>'>
+                      <input type='hidden' name='branch_id' value='<%= r.branch_id %>'>
+                      <input type='number' name='stock_real' class='form-control form-control-sm' value='<%= r.stock %>' min='0' required style='width:78px;' title='Stok fisik hasil hitung'>
+                      <button type='submit' class='btn btn-sm btn-outline-primary'>Stok</button>
+                    </form>
+                    <form action='/stok/min' method='POST' class='d-flex gap-1'>
+                      <input type='hidden' name='product_id' value='<%= r.product_id %>'>
+                      <input type='hidden' name='branch_id' value='<%= r.branch_id %>'>
+                      <input type='number' name='min_stock' class='form-control form-control-sm' value='<%= r.min_stock %>' min='0' required style='width:70px;' title='Batas stok menipis'>
+                      <button type='submit' class='btn btn-sm btn-outline-secondary'>Min</button>
+                    </form>
+                  </div>
+                <% } else { %><small class='text-muted'>cabang lain</small><% } %>
+              </td>
+            </tr>
+          <% }) } else { %><tr><td colspan='8' class='text-center'>Belum ada data stok.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class='card shadow-sm'>
+    <div class='card-header bg-white fw-bold'><i class='bi bi-clock-history'></i> Riwayat Pergerakan Stok <small class='text-muted fw-normal'>(60 terakhir)</small></div>
+    <div class='card-body table-responsive'>
+      <table class='table table-sm table-hover align-middle'>
+        <thead class='table-light'><tr><th>Waktu</th><th>Produk</th><th>Cabang</th><th>Jenis</th><th>Perubahan</th><th>Petugas</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <% if (movements.length > 0) { movements.forEach(m => { %>
+            <tr>
+              <td><small><%= new Date(m.date).toLocaleString('id-ID') %></small></td>
+              <td><%= m.product_name %></td>
+              <td><%= m.branch_name %></td>
+              <td><span class='badge <%= m.qty_delta >= 0 ? "bg-success" : "bg-danger" %>'><%= m.type %></span></td>
+              <td class='fw-bold <%= m.qty_delta >= 0 ? "text-success" : "text-danger" %>'><%= m.qty_delta > 0 ? "+" + m.qty_delta : m.qty_delta %></td>
+              <td><%= m.user_name || 'Sistem' %></td>
+              <td><small class='text-muted'><%= m.note || '-' %><% if (m.ref_id) { %> <code>#<%= m.ref_id %></code><% } %></small></td>
+            </tr>
+          <% }) } else { %><tr><td colspan='7' class='text-center'>Belum ada pergerakan stok tercatat.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const branchSwitcher = document.getElementById('branchSwitcher');
+if (branchSwitcher) {
+    branchSwitcher.addEventListener('change', (e) => {
+        window.location.href = e.target.value === 'all' ? '/stok' : '/stok?branch_id=' + e.target.value;
+    });
+}
+</script>
+<%- include('../layouts/footer') %>

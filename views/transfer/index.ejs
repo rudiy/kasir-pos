@@ -1,0 +1,163 @@
+<%- include('../layouts/header') %>
+<%
+  const myBranch = branches.find(b => b.id === user.branch_id) || {};
+  const fromBranchOptions = branches.filter(b => b.is_active === 1);
+%>
+<div class='p-4'>
+  <h2 class='mb-1'>Transfer Stok Antar Cabang</h2>
+  <small class='text-muted'>Barang keluar dari cabang asal saat transfer dibuat, dan baru masuk ke cabang tujuan setelah diterima.</small>
+
+  <% if (pendingForMe.length > 0) { %>
+    <div class='alert alert-warning mt-3 mb-0'>
+      <strong><i class='bi bi-truck'></i> Ada <%= pendingForMe.length %> transfer menunggu penerimaan di <%= myBranch.name %>.</strong>
+      <ul class='mb-0 mt-1'>
+        <% pendingForMe.forEach(t => { %>
+          <li><code><%= t.code %></code> dari <%= t.from_branch_name %> — dibuat <%= new Date(t.created_at).toLocaleString('id-ID') %></li>
+        <% }) %>
+      </ul>
+    </div>
+  <% } %>
+
+  <div class='card shadow-sm my-3'>
+    <div class='card-header bg-white fw-bold'><i class='bi bi-box-arrow-right'></i> Buat Transfer Baru</div>
+    <div class='card-body'>
+      <form action='/transfer/create' method='POST' id='transferForm'>
+        <div class='row g-2 mb-2'>
+          <div class='col-md-4'>
+            <label class='form-label'>Cabang Asal</label>
+            <% if (isAdminUser) { %>
+              <select name='from_branch_id' id='from_branch' class='form-select' onchange='reloadBranchProducts()'>
+                <% fromBranchOptions.forEach(b => { %><option value='<%= b.id %>' <%= b.id === branchId ? "selected" : "" %>><%= b.name %></option><% }) %>
+              </select>
+            <% } else { %>
+              <input type='hidden' name='from_branch_id' value='<%= user.branch_id %>'>
+              <input type='text' class='form-control' value='<%= myBranch.name %>' readonly>
+            <% } %>
+          </div>
+          <div class='col-md-4'>
+            <label class='form-label'>Cabang Tujuan</label>
+            <select name='to_branch_id' class='form-select' required>
+              <% fromBranchOptions.forEach(b => { %><option value='<%= b.id %>'><%= b.name %></option><% }) %>
+            </select>
+          </div>
+          <div class='col-md-4'>
+            <label class='form-label'>Catatan</label>
+            <input type='text' name='note' class='form-control' placeholder='Contoh: isi stok akhir pekan'>
+          </div>
+        </div>
+
+        <div id='itemRows' class='mb-2'>
+          <div class='row g-2 align-items-end transfer-item'>
+            <div class='col-md-7'>
+              <label class='form-label'>Produk (stok cabang asal)</label>
+              <select name='product_id' class='form-select' required>
+                <% products.forEach(p => { %><option value='<%= p.id %>'><%= p.name %> (stok <%= p.stock %>)</option><% }) %>
+              </select>
+            </div>
+            <div class='col-md-3'>
+              <label class='form-label'>Jumlah</label>
+              <input type='number' name='qty' class='form-control' min='1' value='1' required>
+            </div>
+            <div class='col-md-2'>
+              <button type='button' class='btn btn-outline-secondary w-100' onclick='removeItemRow(this)'><i class='bi bi-dash'></i> Hapus</button>
+            </div>
+          </div>
+        </div>
+
+        <% if (products.length === 0) { %>
+          <div class='alert alert-info py-2'>Cabang asal terpilih belum punya stok. Ganti cabang asal atau isi stok lebih dulu lewat halaman Stok.</div>
+        <% } else { %>
+          <button type='button' class='btn btn-sm btn-outline-primary mb-2' onclick='addItemRow()'><i class='bi bi-plus'></i> Tambah Produk</button>
+          <div><button type='submit' class='btn btn-primary' style='background-color: var(--navy);'>Kirim Stok</button></div>
+        <% } %>
+      </form>
+    </div>
+  </div>
+
+  <div class='card shadow-sm'>
+    <div class='card-header bg-white fw-bold'><i class='bi bi-clock-history'></i> Riwayat Transfer</div>
+    <div class='card-body table-responsive'>
+      <table class='table table-hover align-middle'>
+        <thead class='table-light'>
+          <tr><th>Kode</th><th>Rute</th><th>Status</th><th>Jumlah Item</th><th>Dibuat</th><th>Diterima</th><th class='text-center'>Aksi</th></tr>
+        </thead>
+        <tbody>
+          <% if (detail.length > 0) { detail.forEach(t => { %>
+            <tr>
+              <td><code><%= t.code %></code><br><small class='text-muted'><%= t.note || '-' %></small></td>
+              <td><%= t.from_branch_name %> <i class='bi bi-arrow-right'></i> <%= t.to_branch_name %></td>
+              <td>
+                <span class='badge <%= t.status === "RECEIVED" ? "bg-success" : (t.status === "PENDING" ? "bg-warning text-dark" : "bg-secondary") %>'><%= t.status %></span>
+              </td>
+              <td>
+                <button class='btn btn-sm btn-outline-secondary' onclick='toggleItems(<%= t.id %>)'><%= t.items.length %> item</button>
+              </td>
+              <td><small><%= new Date(t.created_at).toLocaleString('id-ID') %><br>oleh <%= t.created_by_name || '-' %></small></td>
+              <td><small><%= t.received_at ? new Date(t.received_at).toLocaleString('id-ID') : '-' %></small></td>
+              <td class='text-center'>
+                <% if (t.status === 'PENDING') { %>
+                  <% if (canUseBranch(t.to_branch_id)) { %>
+                    <form action='/transfer/receive' method='POST' class='d-inline' onsubmit='return confirm("Konfirmasi <%= t.code %> sudah tiba dan dihitung?")'>
+                      <input type='hidden' name='id' value='<%= t.id %>'>
+                      <button type='submit' class='btn btn-sm btn-success me-1'>Terima</button>
+                    </form>
+                  <% } %>
+                  <% if (canUseBranch(t.from_branch_id)) { %>
+                    <form action='/transfer/cancel' method='POST' class='d-inline' onsubmit='return confirm("Batalkan <%= t.code %>? Stok akan kembali ke cabang asal.")'>
+                      <input type='hidden' name='id' value='<%= t.id %>'>
+                      <button type='submit' class='btn btn-sm btn-outline-danger'>Batal</button>
+                    </form>
+                  <% } %>
+                <% } else { %><small class='text-muted'>selesai</small><% } %>
+              </td>
+            </tr>
+            <tr id='items-<%= t.id %>' style='display:none'>
+              <td colspan='7' class='bg-light'>
+                <ul class='mb-0 small'>
+                  <% t.items.forEach(i => { %><li><%= i.product_name %> &times; <%= i.qty %></li><% }) %>
+                </ul>
+              </td>
+            </tr>
+          <% }) } else { %><tr><td colspan='7' class='text-center'>Belum ada transfer stok.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let productOptionsHtml = '';
+function captureOptions() {
+    const first = document.querySelector('#itemRows select[name="product_id"]');
+    if (first) productOptionsHtml = first.innerHTML;
+}
+
+function addItemRow() {
+    if (!productOptionsHtml) captureOptions();
+    const row = document.createElement('div');
+    row.className = 'row g-2 align-items-end transfer-item mt-2';
+    row.innerHTML = '<div class="col-md-7"><label class="form-label">Produk</label><select name="product_id" class="form-select" required>' + productOptionsHtml + '</select></div>' +
+        '<div class="col-md-3"><label class="form-label">Jumlah</label><input type="number" name="qty" class="form-control" min="1" value="1" required></div>' +
+        '<div class="col-md-2"><button type="button" class="btn btn-outline-secondary w-100" onclick="removeItemRow(this)"><i class="bi bi-dash"></i> Hapus</button></div>';
+    document.getElementById('itemRows').appendChild(row);
+}
+
+function removeItemRow(button) {
+    const rows = document.querySelectorAll('#itemRows .transfer-item');
+    if (rows.length === 1) return alert('Minimal satu produk per transfer.');
+    button.closest('.transfer-item').remove();
+}
+
+function toggleItems(id) {
+    const row = document.getElementById('items-' + id);
+    row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+}
+
+function reloadBranchProducts() {
+    const branch = document.getElementById('from_branch');
+    if (branch) window.location.href = '/transfer?branch_id=' + branch.value;
+}
+
+captureOptions();
+</script>
+<%- include('../layouts/footer') %>

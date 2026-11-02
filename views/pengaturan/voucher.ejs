@@ -1,0 +1,78 @@
+<%- include('../layouts/header') %>
+<div class='p-4'>
+  <h2>Pengaturan Pajak &amp; Voucher</h2>
+  <p class='text-muted'>Tarif pajak dipakai mesin kasir untuk menghitung total transaksi dan dicetak di struk.</p>
+
+  <% if (typeof error !== "undefined" && error) { %>
+    <div class='alert alert-danger alert-dismissible fade show'>
+      <%= error %>
+      <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
+    </div>
+  <% } %>
+  <% if (typeof saved !== "undefined" && saved) { %>
+    <div class='alert alert-success alert-dismissible fade show'>
+      Tarif pajak berhasil disimpan dan langsung berlaku di halaman kasir.
+      <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
+    </div>
+  <% } %>
+
+  <div class='row mt-3 g-4'>
+    <div class='col-md-6'>
+      <div class='card shadow-sm'>
+        <div class='card-header bg-white fw-bold'><i class='bi bi-percent'></i> Tarif Pajak / PPN</div>
+        <div class='card-body'>
+          <form action='/pengaturan/voucher/update' method='POST'>
+            <input type='hidden' name='id' value='<%= settings.id %>'>
+            <div class='mb-3'>
+              <label class='form-label' for='tax_rate'>Tarif Pajak (%)</label>
+              <input type='number' id='tax_rate' name='tax_rate' class='form-control form-control-lg'
+                     value='<%= Number(settings.tax_rate || 0) %>' min='0' max='100' step='0.01' required>
+              <div class='form-text'>Isi <code>0</code> jika toko tidak memungut pajak. Contoh tarif PPN: <code>11</code>.</div>
+            </div>
+            <div class='alert alert-light border mb-3'>
+              <div class='fw-bold mb-1'>Contoh perhitungan</div>
+              <div id='taxPreview' class='small text-muted'></div>
+            </div>
+            <button type='submit' class='btn btn-primary w-100' style='background-color: var(--navy);'>Simpan Tarif Pajak</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class='col-md-6'>
+      <div class='card shadow-sm h-100'>
+        <div class='card-header bg-white fw-bold'><i class='bi bi-ticket-perforated'></i> Voucher &amp; Diskon</div>
+        <div class='card-body'>
+          <p class='small text-muted'>
+            Voucher dibuat, aktif/nonaktif, dan dihapus di halaman khusus. Saat pembayaran, potongan voucher dihitung
+            sebelum pajak dan hanya berlaku jika subtotal sudah memenuhi minimal transaksi voucher tersebut.
+          </p>
+          <ol class='small text-muted'>
+            <li>Subtotal barang</li>
+            <li>&minus; Diskon voucher</li>
+            <li>+ Pajak (tarif di atas)</li>
+            <li>= Total yang dibayar pelanggan</li>
+          </ol>
+          <a href='/voucher' class='btn btn-outline-primary w-100'><i class='bi bi-box-arrow-up-right me-1'></i> Kelola Voucher / Diskon</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const taxInput = document.getElementById('tax_rate');
+const taxPreview = document.getElementById('taxPreview');
+const fmt = new Intl.NumberFormat('id-ID');
+
+function renderTaxPreview() {
+    const rate = parseFloat(taxInput.value) || 0;
+    const subtotal = 100000;
+    const tax = Math.round(subtotal * rate / 100);
+    taxPreview.innerText = 'Subtotal Rp ' + fmt.format(subtotal) + ' + pajak ' + rate + '% = Rp ' + fmt.format(subtotal + tax);
+}
+
+taxInput.addEventListener('input', renderTaxPreview);
+renderTaxPreview();
+</script>
+<%- include('../layouts/footer') %>
