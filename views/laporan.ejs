@@ -121,9 +121,45 @@
       </table>
     </div>
   </div>
-</div>
 
-<div id='print-area' style='display:none;'></div>
+  <% const link = (p) => '/laporan?filter=' + encodeURIComponent(filter) + '&page=' + p;
+     const mulai = jumlahBaris === 0 ? 0 : pageSize * (page - 1) + 1;
+     const akhir = pageSize * (page - 1) + sales.length;
+     const windowStart = Math.max(1, Math.min(page - 3, totalPages - 6));
+     const windowEnd = Math.min(totalPages, windowStart + 6); %>
+  <div class='d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3 no-print'>
+    <small class='text-muted'>
+      Menampilkan <%= mulai %>&ndash;<%= akhir %> dari <%= jumlahBaris %> transaksi
+      (halaman <%= page %> dari <%= totalPages %>). Angka ringkasan di atas dihitung untuk
+      seluruh <%= jumlahBaris %> transaksi, bukan hanya halaman ini.
+    </small>
+    <% if (totalPages > 1) { %>
+      <nav aria-label='Navigasi halaman laporan'>
+        <ul class='pagination pagination-sm mb-0'>
+          <li class='page-item <%= page <= 1 ? 'disabled' : '' %>'>
+            <a class='page-link' href='<%= link(page - 1) %>'>Sebelumnya</a>
+          </li>
+          <% if (windowStart > 1) { %>
+            <li class='page-item'><a class='page-link' href='<%= link(1) %>'>1</a></li>
+            <% if (windowStart > 2) { %><li class='page-item disabled'><span class='page-link'>...</span></li><% } %>
+          <% } %>
+          <% for (let p = windowStart; p <= windowEnd; p++) { %>
+            <li class='page-item <%= p === page ? 'active' : '' %>'>
+              <a class='page-link' href='<%= link(p) %>'><%= p %></a>
+            </li>
+          <% } %>
+          <% if (windowEnd < totalPages) { %>
+            <% if (windowEnd < totalPages - 1) { %><li class='page-item disabled'><span class='page-link'>...</span></li><% } %>
+            <li class='page-item'><a class='page-link' href='<%= link(totalPages) %>'><%= totalPages %></a></li>
+          <% } %>
+          <li class='page-item <%= page >= totalPages ? 'disabled' : '' %>'>
+            <a class='page-link' href='<%= link(page + 1) %>'>Berikutnya</a>
+          </li>
+        </ul>
+      </nav>
+    <% } %>
+  </div>
+</div>
 
 <script>
 function printThermalReport() {

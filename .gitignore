@@ -11,6 +11,10 @@ database/*.db
 database/*.db-wal
 database/*.db-shm
 
+# Hasil backup otomatis (npm run db:backup / scheduler di server.js): salinan penuh
+# database, jadi tidak boleh ikut versi git.
+/backup/
+
 # Hasil "kirim project" dari folder ini isinya salinan .env + database lama,
 # jadi jangan sampai ikut committed.
 /kasir-pos.zip

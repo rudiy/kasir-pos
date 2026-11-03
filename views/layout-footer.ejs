@@ -1,6 +1,6 @@
 </div>
 </div>
-<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js'></script>
+<script src='/vendor/bootstrap/bootstrap.bundle.min.js'></script>
 <script>
 const MOBILE = window.matchMedia('(max-width: 767.98px)');
 const sidebar = document.getElementById('appSidebar');
@@ -42,6 +42,32 @@ if (MOBILE.addEventListener) MOBILE.addEventListener('change', onViewportChange)
 else if (MOBILE.addListener) MOBILE.addListener(onViewportChange);
 
 onViewportChange();
+
+// Penanda koneksi + service worker. Perhatian: navigator.onLine menandakan perangkat ini
+// punya jaringan, bukan bahwa server kasir bisa dijawab; jadi penanda hanya peringatan awal,
+// dan service worker yang memutuskan apakah layanannya nyata atau salinan offline.
+const badge = document.getElementById('netBadge');
+const badgeIcon = badge ? badge.querySelector('i') : null;
+const badgeText = document.getElementById('netBadgeText');
+function paintNet() {
+    if (!badge) return;
+    const on = navigator.onLine;
+    badge.className = 'badge ms-auto flex-shrink-0 ' + (on ? 'bg-success' : 'bg-warning text-dark');
+    badge.title = on ? 'Perangkat terhubung ke jaringan' : 'Tidak ada jaringan — yang tampil adalah salinan offline';
+    badgeIcon.className = 'bi me-1 ' + (on ? 'bi-broadcast' : 'bi-wifi-off');
+    badgeText.textContent = on ? 'Online' : 'Offline';
+}
+addEventListener('online', paintNet);
+addEventListener('offline', paintNet);
+paintNet();
+
+// localhost dan https dianggap secure context; akses LAN lewat http://192.168.x.x tidak,
+// jadi di situ registrasi dilewati dan aplikasi tetap berjalan normal tanpa cache.
+if ('serviceWorker' in navigator && window.isSecureContext) {
+    addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+}
 </script>
 </body>
 </html>

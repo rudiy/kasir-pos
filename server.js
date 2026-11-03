@@ -660,19 +660,30 @@ app.get('/laporan', (req, res) => {
     }
 
     const whereClause = whereConditions.length > 0 ? "WHERE " + whereConditions.join(" AND ") : "";
-    const sales = db.prepare("SELECT s.*, u.name as kasir, b.name as branch_name, vu.name as voided_by_name FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN branches b ON s.branch_id = b.id LEFT JOIN users vu ON s.voided_by = vu.id " + whereClause + " ORDER BY s.date DESC LIMIT 500").all(...whereParams);
-    
+    const whereAktif = "WHERE " + whereConditions.concat("COALESCE(s.status, '') <> 'VOID'").join(" AND ");
+
+    const PAGE_SIZE = 50;
+    // Ringkasan dihitung dengan agregasi atas SELURUH baris yang cocok filter, bukan dari
+    // baris yang kebagian tampil di halaman ini saja. ORDER BY ditambah s.date DESC supaya
+    // halaman tetap identik saat ada beberapa transaksi pada detik yang sama.
+    const jumlahBaris = db.prepare("SELECT COUNT(*) AS n FROM sales s " + whereClause).get(...whereParams).n;
+    const totalPages = Math.max(1, Math.ceil(jumlahBaris / PAGE_SIZE));
+    const page = Math.min(Math.max(Number(req.query.page) || 1, 1), totalPages);
+
+    const ringkasan = db.prepare("SELECT COUNT(*) AS jumlah, COALESCE(SUM(s.total), 0) AS omzet FROM sales s " + whereAktif).get(...whereParams);
+    const hpp = db.prepare(`SELECT COALESCE(SUM(COALESCE(NULLIF(si.cogs, 0), p.price_buy, 0) * si.qty), 0) AS cogs
+        FROM sale_items si
+        LEFT JOIN products p ON p.id = si.product_id
+        JOIN sales s ON s.id = si.sale_id ` + whereAktif).get(...whereParams);
+
+    const sales = db.prepare("SELECT s.*, u.name as kasir, b.name as branch_name, vu.name as voided_by_name FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN branches b ON b.id = s.branch_id LEFT JOIN users vu ON s.voided_by = vu.id " + whereClause + " ORDER BY s.date DESC, s.id DESC LIMIT ? OFFSET ?")
+        .all(...whereParams, PAGE_SIZE, (page - 1) * PAGE_SIZE);
+
     // Baris VOID tetap ditampilkan di tabel sebagai jejak audit, tetapi tidak dihitung
     // dalam omzet, HPP, maupun jumlah transaksi.
-    const aktif = sales.filter(s => s.status !== 'VOID');
-
-    let totalCogs = 0;
-    aktif.forEach(s => {
-        const items = db.prepare("SELECT SUM(COALESCE(NULLIF(si.cogs, 0), p.price_buy, 0) * si.qty) as cogs_total FROM sale_items si LEFT JOIN products p ON si.product_id = p.id WHERE si.sale_id = ?").get(s.id);
-        totalCogs += (items ? (items.cogs_total || 0) : 0);
-    });
-
-    const totalRp = aktif.reduce((sum, item) => sum + (item.total || 0), 0);
+    const totalRp = ringkasan.omzet;
+    const totalTx = ringkasan.jumlah;
+    const totalCogs = hpp.cogs;
     const labaKotor = totalRp - totalCogs;
 
     let expWhereConditions = [];
@@ -697,7 +708,7 @@ app.get('/laporan', (req, res) => {
     const labaBersih = labaKotor - expTotal - payTotal;
     const settings = db.prepare('SELECT * FROM settings LIMIT 1').get();
 
-    res.render('laporan', { sales, filter, totalRp, totalTx: aktif.length, totalCogs, labaKotor, expTotal, payTotal, labaBersih, settings });
+    res.render('laporan', { sales, filter, totalRp, totalTx, totalCogs, labaKotor, expTotal, payTotal, labaBersih, settings, page, totalPages, jumlahBaris, pageSize: PAGE_SIZE });
 });
 
 // PEMBATALAN / RETUR PENJUALAN
@@ -823,4 +834,14 @@ app.post('/pengaturan/voucher/update', isAdmin, (req, res) => {
 
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('[SERVER] KASIR POS berjalan di http://localhost:' + PORT));
+const { runBackup, backupDir, keepCount } = require('./scripts/backup-db');
+const BACKUP_INTERVAL_MIN = Number(process.env.BACKUP_INTERVAL_MIN ?? 60);
+
+app.listen(PORT, () => {
+    console.log('[SERVER] KASIR POS berjalan di http://localhost:' + PORT);
+    if (BACKUP_INTERVAL_MIN > 0) {
+        runBackup();
+        setInterval(runBackup, BACKUP_INTERVAL_MIN * 60000).unref();
+        console.log(`[backup] otomatis tiap ${BACKUP_INTERVAL_MIN} menit, simpan ${keepCount} terbaru di ${backupDir} (BACKUP_INTERVAL_MIN=0 untuk mematikan)`);
+    }
+});

@@ -59,7 +59,9 @@ untuk tiap toko.
 6. **Pajak & Voucher** (`/pengaturan/voucher`) atur tarif pajak; **Pengaturan Toko** (`/pengaturan`)
    untuk nama toko, logo, dan catatan struk.
 7. **Laporan Penjualan** (`/laporan`) menghitung omzet, HPP, laba kotor, dan laba bersih
-   setelah pengeluaran operasional serta gaji.
+   setelah pengeluaran operasional serta gaji. Ringkasan selalu dihitung atas **seluruh**
+   transaksi yang cocok dengan filter, sementara tabelnya dipecah 50 baris per halaman;
+   baris berstatus VOID tampil sebagai jejak audit tetapi tidak masuk angka ringkasan.
 
 ## Struktur folder
 ```
@@ -69,11 +71,17 @@ kasir-pos/
     database.js             koneksi SQLite (WAL mode) + path database/kasir.db
     sessionStore.js         penyimpanan sesi di SQLite, agar sesi tidak hilang saat restart
   database/
-    kasir.db                database development (ikut di version control)
+    kasir.db                database development — TIDAK ikut git, dibuat otomatis saat start
     migrations/init.js      skema tabel, kolom tambahan, seed admin, pemindahan stok lama
   middleware/auth.js        penjaga route yang wajib login
+  scripts/
+    checkpoint-db.js        pindahkan isi kasir.db-wal ke kasir.db
+    backup-db.js            cadangan online + retensi, dipakai juga oleh penjadwal di server.js
   views/                    tampilan EJS, semuanya berkas datar (tanpa subfolder)
   public/                   aset statis dan hasil upload logo
+    vendor/                 Bootstrap 5.3.0 + bootstrap-icons 1.11.1 lokal (tanpa CDN)
+    sw.js                   service worker: cache halaman terakhir untuk mode offline
+  backup/                   hasil cadangan otomatis, tidak ikut git
 ```
 
 Aturan penamaan view dibuat satu-ke-satu dengan route supaya mudah dicari:
@@ -97,7 +105,27 @@ helper `getBranchScope` menentukan cabang mana yang dipakai suatu query.
 | --- | --- |
 | `npm run dev` | jalankan dengan nodemon (restart otomatis) |
 | `npm start` | jalankan biasa |
-| `npm run db:checkpoint` | dorong isi `kasir.db-wal` ke `kasir.db` (jalankan sebelum commit database) |
+| `npm run db:checkpoint` | dorong isi `kasir.db-wal` ke `kasir.db` (hanya perlu kalau mau menyalin DB dengan tangan) |
+| `npm run db:backup` | buat satu cadangan online sekarang juga, tanpa mematikan server |
+
+## Cadangan database
+`scripts/backup-db.js` memakai API *online backup* SQLite, jadi cadangan tetap aman meski
+kasir sedang bertransaksi. Setiap cadangan:
+
+1. ditulis sebagai satu berkas `backup/kasir-YYYYMMDD-HHmmss.db` (nama pakai waktu WIB),
+2. diubah dari mode WAL ke `journal_mode = DELETE` supaya isinya tertekan ke satu berkas
+   dan tidak meninggalkan `-wal`/`-shm`,
+3. diperiksa dengan `PRAGMA integrity_check` — kalau hasilnya bukan `ok`, log menandai
+   `[backup] GAGAL`,
+4. mempertahankan `BACKUP_KEEP` berkas terbaru (bawaan 14) dan menghapus sisanya.
+
+Server memanggil skrip ini saat start lalu tiap `BACKUP_INTERVAL_MIN` menit (bawaan 60,
+isi `0` untuk mematikan). Supaya cadangan benar-benar berguna, salin folder `backup/` ke
+luar mesin kasir secara berkala — kalau laptop kasir hilang, cadangan di dalamnya ikut hilang.
+
+**Memulihkan:** matikan server, salin `backup/kasir-<terbaru>.db` menimpa
+`database/kasir.db`, hapus `kasir.db-wal`/`kasir.db-shm` lama bila ada, lalu jalankan
+`npm start`. Migrasi di `init.js` hanya menambah yang belum ada, jadi data lama tetap utuh.
 
 ## Database dan backup
 - Storage: SQLite satu berkas di `database/kasir.db`, mode WAL, foreign key aktif.
@@ -107,9 +135,28 @@ helper `getBranchScope` menentukan cabang mana yang dipakai suatu query.
 - Sumber kebenaran stok adalah `stock_per_branch`, **bukan** `products.stock`. Setiap
   perubahan stok (penjualan, opname, koreksi, transfer) tercatat di `stock_movements`,
   sehingga total ledger selalu sama dengan posisi stok.
-- Cadangkan dengan menyalin `kasir.db` **setelah** `npm run db:checkpoint`, saat aplikasi
-  sedang mati. Berkas `kasir.db-wal` dan `kasir.db-shm` di-ignore git karena isinya
-  sementara; kalau kamu mengirim salinan database, kirim ketiganya.
+- `database/kasir.db` tidak dilacak git (lihat `.gitignore`), jadi sumber skema tetap
+  `database/migrations/init.js` dan sumber data adalah file di mesin kasir plus folder
+  `backup/`. Lihat bagian **Cadangan database** di bawah untuk cara mencadangkan dan
+  memulihkan.
+
+## Aset lokal dan perilaku offline
+- Seluruh CSS/JS/font Bootstrap diambil dari `public/vendor/`, jadi tidak ada satu pun
+  permintaan ke internet saat halaman dibuka. Internet mati tidak lagi merusak tampilan
+  atau mematikan modal pembayaran.
+- `public/sw.js` (service worker) memakai **network-first** untuk halaman: selama server
+  terjangkau, yang tampil selalu jawaban server terbaru. Begitu koneksi atau server putus,
+  permintaan jatuh ke cache sehingga kasir tetap melihat halaman terakhir yang pernah
+  dibuka; URL yang belum pernah dibuka diarahkan ke salinan halaman login, bukan layar
+  error browser. Aset statis memakai cache-first lalu diperbarui diam-diam.
+- Yang **tidak** dijamin offline: membuat transaksi baru. Stok, harga, dan struk dihitung
+  di server, jadi saat server tak terjangkau layar hanya menampilkan bacaan terakhir dan
+  tidak bisa dipakai menjual. Antrean transaksi offline (outbox) adalah fitur terpisah.
+- Registrasi service worker hanya jalan di *secure context*: `http://localhost:...` dan
+  HTTPS dianggap aman, sedangkan `http://192.168.x.x:3000` tidak. Akses lewat alamat IP LAN
+  tetap normal, hanya tanpa cadangan offline.
+- Penanda **Online/Offline** di kanan atas mencerminkan jaringan perangkat ini, bukan
+  kepastian server kasir bisa dijawab.
 
 ## Masalah yang sering muncul
 - `EADDRINUSE: address already in use :::3000` — port sudah dipakai proses lain, biasanya

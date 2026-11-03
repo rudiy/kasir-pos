@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "db:checkpoint": "node scripts/checkpoint-db.js"
+    "db:checkpoint": "node scripts/checkpoint-db.js",
+    "db:backup": "node scripts/backup-db.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
