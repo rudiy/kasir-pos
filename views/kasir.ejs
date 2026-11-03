@@ -1,6 +1,6 @@
 <%- include('layout-header') %>
 <div class='row g-0'>
-  <div class='col-md-8 p-3 bg-light'>
+  <div class='col-lg-8 p-3 bg-light'>
     <div class='d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2'>
       <div class='small text-muted'>Stok yang tampil &amp; berkurang: <strong><%= branch ? branch.name : 'cabang Anda' %></strong></div>
       <% if (isAdmin) { %>
@@ -12,7 +12,7 @@
     <input type='text' id='barcode-input' class='form-control mb-3 p-3 shadow-sm' placeholder='Scan Barcode atau Cari Produk (F2)...' autofocus>
     <div class='row g-2' id='product-grid'>
       <% products.forEach(p => { %>
-        <div class='col-md-3 col-6'>
+        <div class='col-6 col-md-4 col-xl-3'>
           <div class='card product-card h-100' data-product='<%= encodeURIComponent(JSON.stringify(p)) %>' onclick='addToCartFromData(this)'>
             <div class='card-body text-center p-2'>
               <h6 class='card-title text-truncate'><%= p.name %></h6>
@@ -24,11 +24,11 @@
       <% }) %>
     </div>
   </div>
-  <div class='col-md-4 pos-cart-panel d-flex flex-column'>
+  <div class='col-lg-4 pos-cart-panel d-flex flex-column'>
     <div class='p-3 bg-white flex-grow-1' id='cart-items'>
       <div class='text-center text-muted mt-5'>Keranjang Kosong</div>
     </div>
-    <div class='p-3 bg-light border-top'>
+    <div class='p-3 bg-light border-top pos-checkout-bar'>
       <div class='d-flex justify-content-between mb-1 small'><span>Subtotal</span><span id='cart-subtotal'>Rp 0</span></div>
       <div class='d-flex justify-content-between mb-1 small text-danger' id='cart-discount-row' style='display:none'><span>Diskon</span><span id='cart-discount'>Rp 0</span></div>
       <div class='d-flex justify-content-between mb-1 small' id='cart-tax-row' style='display:none'><span>Pajak (<span id='cart-tax-rate'>0</span>%)</span><span id='cart-tax'>Rp 0</span></div>

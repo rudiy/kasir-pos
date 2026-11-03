@@ -2,19 +2,46 @@
 </div>
 <script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js'></script>
 <script>
-function toggleSidebar() {
-    const sb = document.getElementById('appSidebar');
-    if(sb) {
-        sb.classList.toggle('hidden');
-        localStorage.setItem('sidebarHidden', sb.classList.contains('hidden'));
+const MOBILE = window.matchMedia('(max-width: 767.98px)');
+const sidebar = document.getElementById('appSidebar');
+const toggle = document.getElementById('sidebarToggle');
+const backdrop = document.getElementById('sidebarBackdrop');
+const closeBtn = document.getElementById('sidebarClose');
+
+const isOpen = () => MOBILE.matches
+    ? document.body.classList.contains('sidebar-open')
+    : !sidebar.classList.contains('hidden');
+
+function setOpen(open) {
+    if (MOBILE.matches) {
+        // Di HP sidebar jadi laci: class 'hidden' (tumpal ke kiri) tidak dipakai supaya
+        // posisi laci selalu konsisten saat ukuran jendela berubah.
+        sidebar.classList.remove('hidden');
+        document.body.classList.toggle('sidebar-open', open);
+    } else {
+        document.body.classList.remove('sidebar-open');
+        sidebar.classList.toggle('hidden', !open);
+        localStorage.setItem('sidebarHidden', String(!open));
     }
+    toggle.setAttribute('aria-expanded', String(isOpen()));
 }
-document.addEventListener("DOMContentLoaded", () => {
-    const sb = document.getElementById('appSidebar');
-    if(sb && localStorage.getItem('sidebarHidden') === 'true') {
-        sb.classList.add('hidden');
-    }
-});
+
+toggle.addEventListener('click', () => setOpen(!isOpen()));
+if (closeBtn) closeBtn.addEventListener('click', () => setOpen(false));
+if (backdrop) backdrop.addEventListener('click', () => setOpen(false));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && MOBILE.matches) setOpen(false); });
+sidebar.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => { if (MOBILE.matches) setOpen(false); }));
+
+const onViewportChange = () => {
+    document.body.classList.remove('sidebar-open');
+    sidebar.classList.remove('hidden');
+    if (!MOBILE.matches && localStorage.getItem('sidebarHidden') === 'true') sidebar.classList.add('hidden');
+    toggle.setAttribute('aria-expanded', String(isOpen()));
+};
+if (MOBILE.addEventListener) MOBILE.addEventListener('change', onViewportChange);
+else if (MOBILE.addListener) MOBILE.addListener(onViewportChange);
+
+onViewportChange();
 </script>
 </body>
 </html>

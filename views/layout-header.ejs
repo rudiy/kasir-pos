@@ -9,14 +9,17 @@
   <link rel='stylesheet' href='/css/style.css'>
 </head>
 <body>
-<div class='d-flex'>
-  <div class='sidebar p-3 d-none d-md-block flex-shrink-0 no-print' id='appSidebar' style='width: 250px;'>
-    <div class='text-center mb-3'>
+<div class='d-flex app-shell'>
+  <div class='sidebar p-3 flex-shrink-0 no-print' id='appSidebar'>
+    <div class='d-flex justify-content-between align-items-start mb-2'>
+        <div class='text-center flex-grow-1'>
         <% if(settings && settings.logo) { %>
             <img src='<%= settings.logo %>' alt='Logo' class='img-fluid rounded mb-2' style='max-height: 50px;'>
         <% } else { %>
-            <h4 class='text-white'><i class='bi bi-shop'></i> KASIR POS</h4>
+            <h4 class='text-white mb-0'><i class='bi bi-shop'></i> KASIR POS</h4>
         <% } %>
+        </div>
+        <button type='button' class='btn btn-sm btn-outline-light sidebar-close d-md-none' id='sidebarClose' aria-label='Tutup menu'><i class='bi bi-x-lg'></i></button>
     </div>
     <div class='text-center text-secondary mb-3 small'>
         Halo, <strong><%= user.name %></strong> <br> 
@@ -54,8 +57,10 @@
     <a href='/logout' class='text-danger'><i class='bi bi-box-arrow-left me-2'></i> Logout</a>
   </div>
 
-  <div class='flex-grow-1 overflow-auto' style='height: 100vh;'>
+  <div class='sidebar-backdrop no-print' id='sidebarBackdrop'></div>
+
+  <div class='app-main flex-grow-1 overflow-auto'>
     <nav class='navbar navbar-light bg-white border-bottom px-3 no-print'>
-        <button class='btn btn-outline-dark btn-sm' onclick='toggleSidebar()'><i class='bi bi-list fs-5'></i></button>
-        <span class='fw-bold text-secondary'><%= settings && settings.store_name ? settings.store_name : "KASIR POS" %></span>
+        <button class='btn btn-outline-dark btn-sm flex-shrink-0' id='sidebarToggle' type='button' aria-controls='appSidebar' aria-expanded='false' aria-label='Buka atau tutup menu'><i class='bi bi-list fs-5'></i></button>
+        <span class='fw-bold text-secondary ms-2 text-truncate'><%= settings && settings.store_name ? settings.store_name : "KASIR POS" %></span>
     </nav>
