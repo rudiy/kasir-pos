@@ -1,8 +1,13 @@
 .env
 update-fitur-3.js
 
-# Sidecar WAL mode SQLite: berubah tiap transaksi dan isinya sudah di-checkpoint
-# ke database/kasir.db, jadi tidak perlu ikut versi git.
+# Database dev SQLite sengaja tidak ikut versi git: isinya berubah tiap transaksi
+# dan bukan sumber skema. server.js memanggil initDB() saat start, jadi clone baru
+# otomatis membuat database/kasir.db lengkap dengan tabel, seed, dan akun admin.
+database/*.db
+
+# Sidecar WAL mode SQLite: ikut berubah tiap transaksi dan isinya sudah di-checkpoint
+# ke dalam file .db, jadi tidak perlu ikut versi git.
 database/*.db-wal
 database/*.db-shm
 
