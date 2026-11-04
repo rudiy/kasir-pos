@@ -18,3 +18,7 @@ database/*.db-shm
 # Hasil "kirim project" dari folder ini isinya salinan .env + database lama,
 # jadi jangan sampai ikut committed.
 /kasir-pos.zip
+
+# Hasil upload operator: logo toko dan gambar QRIS per cabang. Isinya aset instance
+# berjalan — QRIS memuat kode merchant asli toko — jadi tidak pernah masuk versi git.
+/public/uploads/
