@@ -1,0 +1,70 @@
+<%- include('layout-header') %>
+<div class='p-4'>
+  <h2 class='mb-3'>Ganti Sandi</h2>
+
+  <% if(wajib) { %>
+    <div class='alert alert-warning'>
+      <i class='bi bi-exclamation-triangle me-1'></i>
+      Akun ini masih memakai sandi bawaan. Ganti dulu sebelum halaman lain bisa dibuka.
+    </div>
+  <% } %>
+  <% if(saved) { %>
+    <div class='alert alert-success'>
+      <i class='bi bi-check-circle me-1'></i> Sandi berhasil diganti. <a href='/'>Kembali ke Dashboard</a>.
+    </div>
+  <% } %>
+  <% if(error) { %>
+    <div class='alert alert-danger'><i class='bi bi-x-circle me-1'></i> <%= error %></div>
+  <% } %>
+
+  <div class='card shadow-sm' style='max-width: 460px;'>
+    <div class='card-body'>
+      <form method='POST' action='/ganti-sandi' id='formSandi'>
+        <div class='mb-3'>
+          <label class='form-label' for='old_password'>Sandi Lama</label>
+          <input type='password' class='form-control' id='old_password' name='old_password' required autocomplete='current-password'>
+        </div>
+        <div class='mb-3'>
+          <label class='form-label' for='new_password'>Sandi Baru</label>
+          <div class='input-group'>
+            <input type='password' class='form-control' id='new_password' name='new_password' required minlength='8' autocomplete='new-password'>
+            <button class='btn btn-outline-secondary' type='button' data-pasang='new_password'><i class='bi bi-eye'></i></button>
+          </div>
+          <div class='form-text'>Minimal 8 karakter.</div>
+        </div>
+        <div class='mb-3'>
+          <label class='form-label' for='confirm_password'>Ulangi Sandi Baru</label>
+          <div class='input-group'>
+            <input type='password' class='form-control' id='confirm_password' name='confirm_password' required minlength='8' autocomplete='new-password'>
+            <button class='btn btn-outline-secondary' type='button' data-pasang='confirm_password'><i class='bi bi-eye'></i></button>
+          </div>
+        </div>
+        <div class='d-grid d-sm-flex gap-2'>
+          <button type='submit' class='btn btn-primary' style='background-color: var(--navy);'>Ganti Sandi</button>
+          <% if(!wajib) { %><a href='/' class='btn btn-outline-secondary'>Batal</a><% } %>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('[data-pasang]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    const input = document.getElementById(btn.dataset.pasang);
+    input.type = input.type === 'password' ? 'text' : 'password';
+    btn.innerHTML = input.type === 'password' ? '<i class="bi bi-eye"></i>' : '<i class="bi bi-eye-slash"></i>';
+  });
+});
+
+const form = document.getElementById('formSandi');
+form.addEventListener('submit', function (e) {
+  const baru = document.getElementById('new_password').value;
+  const ulang = document.getElementById('confirm_password').value;
+  if (baru !== ulang) {
+    e.preventDefault();
+    window.alert('Konfirmasi sandi tidak sama dengan sandi baru.');
+  }
+});
+</script>
+<%- include('layout-footer') %>

@@ -8,11 +8,27 @@
     </div>
   </div>
 
-  <div class='btn-group mb-4 no-print' role='group'>
-    <a href='/laporan?filter=hari_ini' class='btn <%= filter === "hari_ini" ? "btn-primary" : "btn-outline-primary" %>'>Hari Ini</a>
-    <a href='/laporan?filter=bulan_ini' class='btn <%= filter === "bulan_ini" ? "btn-primary" : "btn-outline-primary" %>'>Bulan Ini</a>
-    <a href='/laporan?filter=semua' class='btn <%= filter === "semua" ? "btn-primary" : "btn-outline-primary" %>'>Semua Transaksi</a>
+  <% /* Semua tautan laporan membawa filter waktu DAN member supaya berpindah filter
+         tidak diam-diam melebarkan hasil yang sedang dilihat. */
+     const tautan = (f, m, p) => '/laporan?filter=' + encodeURIComponent(f)
+        + (m ? '&member=' + encodeURIComponent(m) : '') + (p ? '&page=' + p : ''); %>
+  <div class='btn-group mb-2 no-print' role='group'>
+    <a href='<%= tautan("hari_ini", member) %>' class='btn <%= filter === "hari_ini" ? "btn-primary" : "btn-outline-primary" %>'>Hari Ini</a>
+    <a href='<%= tautan("bulan_ini", member) %>' class='btn <%= filter === "bulan_ini" ? "btn-primary" : "btn-outline-primary" %>'>Bulan Ini</a>
+    <a href='<%= tautan("semua", member) %>' class='btn <%= filter === "semua" ? "btn-primary" : "btn-outline-primary" %>'>Semua Transaksi</a>
   </div>
+
+  <form method='GET' action='/laporan' class='d-flex flex-wrap gap-2 align-items-center mb-4 no-print'>
+    <input type='hidden' name='filter' value='<%= filter %>'>
+    <label class='mb-0 small text-muted' for='member-filter'>Filter member</label>
+    <select id='member-filter' name='member' class='form-select form-select-sm' style='max-width:280px' onchange='this.form.submit()'>
+      <option value=''>Semua pelanggan</option>
+      <% customers.forEach(c => { %>
+        <option value='<%= c.id %>' <%= Number(member) === c.id ? 'selected' : '' %>><%= [c.code, c.name].filter(Boolean).join(' - ') %></option>
+      <% }) %>
+    </select>
+    <% if (member) { %><a href='<%= tautan(filter, 0) %>' class='btn btn-sm btn-outline-secondary'>Hapus filter member</a><% } %>
+  </form>
 
   <% if(isManagerOrAdmin) { %>
   <!-- Kartu Finansial Khusus Admin & Manager Cabang -->
@@ -22,6 +38,9 @@
             <div class='card-body'>
                 <h6 class='text-muted small'>Omset Penjualan</h6>
                 <h4 class='fw-bold text-primary mb-0'>Rp <%= totalRp.toLocaleString('id-ID') %></h4>
+                <% if (totalPajak > 0) { %>
+                <div class='small text-muted mt-1' title='Omset dikurangi pajak yang dipungut dari pelanggan pada periode ini — angka itu harus disetor, bukan pendapatan toko.'>Omset Bersih Pajak <strong>Rp <%= omsetBersihPajak.toLocaleString('id-ID') %></strong></div>
+                <% } %>
             </div>
         </div>
     </div>
@@ -58,6 +77,9 @@
             <div class='card-body'>
                 <h6>Total Omset Penjualan</h6>
                 <h3 class='fw-bold mb-0'>Rp <%= totalRp.toLocaleString('id-ID') %></h3>
+                <% if (totalPajak > 0) { %>
+                <div class='small mt-1'>Omset Bersih Pajak Rp <%= omsetBersihPajak.toLocaleString('id-ID') %></div>
+                <% } %>
             </div>
         </div>
     </div>
@@ -82,6 +104,7 @@
             <th>No. Nota</th>
             <th>Cabang</th>
             <th>Kasir</th>
+            <th>Member</th>
             <th>Metode</th>
             <th class='text-end'>Total Transaksi</th>
             <th>Status</th>
@@ -95,6 +118,7 @@
               <td><strong class='<%= isVoid ? "text-decoration-line-through" : "" %>'><%= s.invoice_no %></strong></td>
               <td><span class='badge bg-secondary'><i class='bi bi-building'></i> <%= s.branch_name || 'Cabang Pusat' %></span></td>
               <td><%= s.kasir || 'Admin' %></td>
+              <td><% if (s.customer_name) { %><%= s.customer_name %><% } else { %><span class='text-muted small'>Umum</span><% } %></td>
               <td><span class='badge bg-secondary'><%= s.payment_method %></span></td>
               <td class='text-end fw-bold <%= isVoid ? "text-decoration-line-through" : "" %>'>Rp <%= s.total.toLocaleString('id-ID') %></td>
               <td>
@@ -115,14 +139,14 @@
               <% } %>
             </tr>
           <% }) } else { %>
-            <tr><td colspan='<%= isManagerOrAdmin ? 8 : 7 %>' class='text-center p-4 text-muted'>Tidak ada transaksi pada periode ini.</td></tr>
+            <tr><td colspan='<%= isManagerOrAdmin ? 9 : 8 %>' class='text-center p-4 text-muted'>Tidak ada transaksi pada periode ini.</td></tr>
           <% } %>
         </tbody>
       </table>
     </div>
   </div>
 
-  <% const link = (p) => '/laporan?filter=' + encodeURIComponent(filter) + '&page=' + p;
+  <% const link = (p) => tautan(filter, member, p);
      const mulai = jumlahBaris === 0 ? 0 : pageSize * (page - 1) + 1;
      const akhir = pageSize * (page - 1) + sales.length;
      const windowStart = Math.max(1, Math.min(page - 3, totalPages - 6));
@@ -161,6 +185,8 @@
   </div>
 </div>
 
+<div id='print-area' style='display:none;'></div>
+
 <script>
 function printThermalReport() {
   const pa = document.getElementById('print-area');
@@ -168,9 +194,15 @@ function printThermalReport() {
   const now = new Date();
   const isManagerOrAdminUser = <%= isManagerOrAdmin ? 'true' : 'false' %>;
 
-  let h = "<div style='text-align:center;'><strong><%= settings.store_name %></strong><br>LAPORAN REKAP (<%= filter.toUpperCase() %>)<br><small>" + now.toLocaleString('id-ID') + "</small></div><hr style='border-top:1px dashed #000;'>";
+  let h = "<div style='text-align:center;'><strong><%= settings.store_name %></strong><br>LAPORAN REKAP<% const namaMemberCetak = (customers.find(c => c.id === Number(member)) || {}).name; %><%= namaMemberCetak ? ' - MEMBER ' + namaMemberCetak : '' %><br><strong><%= periodeLabel %></strong><br><small>" + now.toLocaleString('id-ID') + "</small></div><hr style='border-top:1px dashed #000;'>";
   h += "<div style='display:flex; justify-content:space-between;'><span>Total Tx</span><span><%= totalTx %></span></div>";
+  h += "<div style='display:flex; justify-content:space-between;'><span>Barang Keluar</span><span><%= totalPcs %> Pcs</span></div>";
   h += "<div style='display:flex; justify-content:space-between;'><span>Omset</span><span>Rp <%= totalRp.toLocaleString('id-ID') %></span></div>";
+  <% // Angka omset tanpa prefiks "Rp" di baris ini: labelnya sudah panjang dan kertas 44 mm
+     // hanya memuat ±30 karakter. %>
+  <% if (totalPajak > 0) { %>
+  h += "<div style='display:flex; justify-content:space-between;'><span>Omset Bersih Pajak</span><span><%= omsetBersihPajak.toLocaleString('id-ID') %></span></div>";
+  <% } %>
   
   if (isManagerOrAdminUser) {
     h += "<div style='display:flex; justify-content:space-between;'><span>HPP</span><span>Rp <%= totalCogs.toLocaleString('id-ID') %></span></div>";
@@ -179,10 +211,21 @@ function printThermalReport() {
     h += "<hr style='border-top:1px dashed #000;'><div style='display:flex; justify-content:space-between;'><strong>LABA BERSIH</strong><strong>Rp <%= labaBersih.toLocaleString('id-ID') %></strong></div>";
   }
 
+  // Rincian hanya dicetak bila lebih dari satu periode: untuk filter hari ini daftarnya satu
+  // baris yang sama persis dengan ringkasan di atas. Lebar baris dijaga <= 30 karakter karena
+  // kertas thermal 58mm hanya memuat sekitar 32 karakter per baris.
+  <% if (harian.length > 1) { %>
+    h += "<hr style='border-top:1px dashed #000;'><div style='text-align:center;'><strong><%= judulRincian %></strong></div>";
+    h += "<div style='display:flex; justify-content:space-between; font-size:10px;'><span>Tanggal  Tx  Pcs</span><span>Omset (Rp)</span></div>";
+    <% harian.forEach(r => { %>
+      h += "<div style='display:flex; justify-content:space-between;'><span><%= r.label %>  <%= r.tx %>T <%= r.pcs %>P</span><span><%= r.omzet.toLocaleString('id-ID') %></span></div>";
+    <% }) %>
+  <% } %>
+
   h += "<hr style='border-top:1px dashed #000;'><div style='text-align:center;'>--- SELESAI ---</div>";
   pa.innerHTML = h;
   document.body.classList.add('print-receipt-mode');
-  window.print();
+  cetakStrukThermal();
   document.body.classList.remove('print-receipt-mode');
   pa.style.display = 'none';
 }
@@ -196,7 +239,7 @@ function voidSale(btn) {
   const form = document.createElement('form');
   form.method = 'POST';
   form.action = '/laporan/void';
-  const fields = { id: btn.dataset.id, reason: reason.trim(), filter: '<%= filter %>' };
+  const fields = { id: btn.dataset.id, reason: reason.trim(), filter: '<%= filter %>', member: '<%= member || "" %>' };
   Object.keys(fields).forEach(name => {
     const input = document.createElement('input');
     input.type = 'hidden';

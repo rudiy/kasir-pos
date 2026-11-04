@@ -2,11 +2,11 @@
 <html lang='id'>
 <head>
   <meta charset='UTF-8'>
-  <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+  <meta name='viewport' content='width=device-width, initial-scale=1.0, viewport-fit=cover'>
   <title>KASIR POS</title>
   <link href='/vendor/bootstrap/bootstrap.min.css' rel='stylesheet'>
   <link rel='stylesheet' href='/vendor/bootstrap-icons/bootstrap-icons.css'>
-  <link rel='stylesheet' href='/css/style.css'>
+  <link rel='stylesheet' href='/css/style.css?v=<%= assetVer %>'>
 </head>
 <body>
 <div class='d-flex app-shell'>
@@ -26,6 +26,9 @@
         <span class='badge <%= user.role === "Administrator" ? "bg-primary" : (user.role === "Manager Cabang" ? "bg-warning text-dark" : "bg-info text-dark") %>'><%= user.role %></span>
     </div>
     
+    <% /* Daftar ini satu-satunya sumber menu; sheet "Lainnya" di nav bawah menyalin isinya
+           supaya pembatasan role tidak perlu ditulis dua kali. */ %>
+    <div class='sidebar-menu' id='sidebarMenu'>
     <a href='/' class='<%= typeof path !== "undefined" && path === "/" ? "bg-secondary" : "" %>'><i class='bi bi-speedometer2 me-2'></i> Dashboard</a>
     <a href='/kasir' class='<%= typeof path !== "undefined" && path === "/kasir" ? "bg-secondary" : "" %>'><i class='bi bi-calculator me-2'></i> Kasir (POS)</a>
     <a href='/pelanggan' class='<%= typeof path !== "undefined" && path === "/pelanggan" ? "bg-secondary" : "" %>'><i class='bi bi-people me-2'></i> Pelanggan</a>
@@ -49,12 +52,14 @@
         <a href='/cabang' class='<%= typeof path !== "undefined" && path === "/cabang" ? "bg-secondary" : "" %>'><i class='bi bi-building me-2'></i> Cabang Toko</a>
         <a href='/penggajian' class='<%= typeof path !== "undefined" && path === "/penggajian" ? "bg-secondary" : "" %>'><i class='bi bi-cash-stack me-2'></i> Penggajian Gaji</a>
         <a href='/voucher' class='<%= typeof path !== "undefined" && path === "/voucher" ? "bg-secondary" : "" %>'><i class='bi bi-ticket-perforated me-2'></i> Voucher / Diskon</a>
-        <a href='/pengaturan/voucher' class='<%= typeof path !== "undefined" && path === "/pengaturan/voucher" ? "bg-secondary" : "" %>'><i class='bi bi-percent me-2'></i> Pajak &amp; Voucher</a>
+        <a href='/pengaturan/voucher' class='<%= typeof path !== "undefined" && path === "/pengaturan/voucher" ? "bg-secondary" : "" %>'><i class='bi bi-percent me-2'></i> Tarif Pajak</a>
         <a href='/pengaturan' class='<%= typeof path !== "undefined" && path === "/pengaturan" ? "bg-secondary" : "" %>'><i class='bi bi-gear me-2'></i> Pengaturan Toko</a>
     <% } %>
 
     <hr class='text-secondary'>
+    <a href='/ganti-sandi' class='<%= typeof path !== "undefined" && path === "/ganti-sandi" ? "bg-secondary" : "" %>'><i class='bi bi-key me-2'></i> Ganti Sandi</a>
     <a href='/logout' class='text-danger'><i class='bi bi-box-arrow-left me-2'></i> Logout</a>
+    </div>
   </div>
 
   <div class='sidebar-backdrop no-print' id='sidebarBackdrop'></div>

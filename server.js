@@ -4,6 +4,7 @@ const path = require('path');
 const helmet = require('helmet');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
+const fs = require('fs');
 const db = require('./config/database');
 const SqliteSessionStore = require('./config/sessionStore');
 const initDB = require('./database/migrations/init');
@@ -13,6 +14,15 @@ initDB();
 
 const app = express();
 app.set('view engine', 'ejs');
+
+// Penanda versi style.css. Service worker meng-cache berdasarkan URL penuh, jadi
+// tanpa penanda ini klien bisa terus memakai CSS lama setelah file-nya diubah.
+const ASSET_VER = (() => {
+  try { return require('fs').statSync(path.join(__dirname, 'public/css/style.css')).mtimeMs.toString(36); }
+  catch (err) { return 'dev'; }
+})();
+app.use((req, res, next) => { res.locals.assetVer = ASSET_VER; next(); });
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -31,6 +41,28 @@ const storage = multer.diskStorage({
     filename: (req, file, cb) => cb(null, 'logo-' + Date.now() + path.extname(file.originalname))
 });
 const upload = multer({ storage });
+
+// Gambar QRIS per cabang. Berkasnya tampil apa adanya di layar kasir dan disimpan di folder
+// publik, jadi hanya gambar known-type yang diterima dan dibatasi 4 MB.
+const storageQris = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, path.join(__dirname, 'public/uploads')),
+    filename: (req, file, cb) => cb(null, 'qris-' + Date.now() + path.extname(file.originalname).toLowerCase())
+});
+const uploadQris = multer({
+    storage: storageQris,
+    limits: { fileSize: 4 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const boleh = /^image\/(png|jpe?g|webp)$/i.test(file.mimetype);
+        if (!boleh) req.qrisDitolak = file.originalname;
+        cb(null, boleh);
+    }
+});
+
+// Hanya hasil upload QRIS (qris-<waktu>.<ekstensi>) di folder uploads yang boleh dihapus aplikasi.
+function hapusBerkasQris(url) {
+    if (!url || url.indexOf('/uploads/qris-') !== 0) return;
+    fs.unlink(path.join(__dirname, 'public', url.slice(1)), () => {});
+}
 
 // Kolom tanggal ditulis dengan CURRENT_TIMESTAMP, yang nilainya UTC. Semua tampilan
 // memakai helper ini supaya yang terbaca di layar/jam mesin kasir (WIB) tetap sama,
@@ -90,6 +122,44 @@ app.use((req, res, next) => {
     next(); 
 });
 
+// Akun yang masih membawa sandi bawaan tidak diberi akses ke halaman apa pun
+// selain mengganti sandinya sendiri (atau keluar).
+app.use((req, res, next) => {
+    if (!req.session.user.force_pass_change) return next();
+    if (req.path === '/ganti-sandi' || req.path === '/logout') return next();
+    res.redirect('/ganti-sandi');
+});
+
+app.get('/ganti-sandi', (req, res) => {
+    res.render('ganti-sandi', {
+        error: req.query.error || null,
+        saved: req.query.saved === '1',
+        wajib: !!req.session.user.force_pass_change,
+    });
+});
+
+app.post('/ganti-sandi', (req, res) => {
+    const oldPassword = req.body.old_password || '';
+    const newPassword = req.body.new_password || '';
+    const row = db.prepare('SELECT password FROM users WHERE id = ?').get(req.session.user.id);
+    if (!row || !bcrypt.compareSync(oldPassword, row.password)) {
+        return res.redirect('/ganti-sandi?error=' + encodeURIComponent('Sandi lama tidak cocok.'));
+    }
+    if (newPassword.length < 8) {
+        return res.redirect('/ganti-sandi?error=' + encodeURIComponent('Sandi baru minimal 8 karakter.'));
+    }
+    if (newPassword === oldPassword) {
+        return res.redirect('/ganti-sandi?error=' + encodeURIComponent('Sandi baru tidak boleh sama dengan sandi lama.'));
+    }
+    if (newPassword !== req.body.confirm_password) {
+        return res.redirect('/ganti-sandi?error=' + encodeURIComponent('Konfirmasi sandi tidak sama dengan sandi baru.'));
+    }
+    db.prepare('UPDATE users SET password = ?, force_pass_change = 0 WHERE id = ?')
+        .run(bcrypt.hashSync(newPassword, 10), req.session.user.id);
+    req.session.user.force_pass_change = 0;
+    res.redirect('/ganti-sandi?saved=1');
+});
+
 // HELPER KONTEKS CABANG
 const insertStockMovement = db.prepare('INSERT INTO stock_movements (product_id, branch_id, type, qty_delta, ref_id, note, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)');
 
@@ -140,12 +210,12 @@ function getTodayStats(user, selectedBranchId) {
             payToday = db.prepare("SELECT SUM(amount) as total FROM payroll WHERE date(date, 'localtime') = ?").get(today).total || 0;
         }
 
-        const salesTodayItems = db.prepare("SELECT s.id FROM sales s WHERE date(s.date, 'localtime') = ?" + notVoid + branchFilterSales).all(today, ...branchParams);
-        const cogsPerSale = db.prepare("SELECT SUM(COALESCE(NULLIF(si.cogs, 0), p.price_buy, 0) * si.qty) as total FROM sale_items si LEFT JOIN products p ON si.product_id = p.id WHERE si.sale_id = ?");
-        salesTodayItems.forEach(s => {
-            const itemCogs = cogsPerSale.get(s.id);
-            cogsToday += (itemCogs ? (itemCogs.total || 0) : 0);
-        });
+        const cogsRow = db.prepare("SELECT SUM(COALESCE(NULLIF(si.cogs, 0), p.price_buy, 0) * si.qty) as total"
+            + " FROM sale_items si JOIN sales s ON s.id = si.sale_id"
+            + " LEFT JOIN products p ON p.id = si.product_id"
+            + " WHERE date(s.date, 'localtime') = ?" + notVoid + branchFilterSales
+        ).get(today, ...branchParams);
+        cogsToday = cogsRow.total || 0;
 
         profitToday = (salesToday.total || 0) - cogsToday - expToday - payToday;
     }
@@ -193,11 +263,27 @@ app.post('/cabang/toggle-status', isAdmin, (req, res) => {
         res.redirect('/cabang');
     } catch(err) { res.status(500).send(err.message); }
 });
-app.post('/cabang/edit', isAdmin, (req, res) => {
+app.post('/cabang/edit', isAdmin, uploadQris.single('qris'), (req, res) => {
     try {
+        if (req.qrisDitolak) {
+            return res.status(400).send('Gagal: gambar QR harus PNG, JPG, atau WebP maksimal 4 MB.');
+        }
         db.prepare('UPDATE branches SET code=?, name=?, address=?, phone=?, pic_name=? WHERE id=?').run(req.body.code, req.body.name, req.body.address, req.body.phone, req.body.pic_name, req.body.id);
+        if (req.file) {
+            const lama = db.prepare('SELECT qris_image FROM branches WHERE id=?').get(req.body.id).qris_image;
+            db.prepare('UPDATE branches SET qris_image=? WHERE id=?').run('/uploads/' + req.file.filename, req.body.id);
+            hapusBerkasQris(lama);
+        }
         res.redirect('/cabang');
     } catch(err) { res.status(500).send(err.message); }
+});
+app.post('/cabang/qris/delete', isAdmin, (req, res) => {
+    const cabang = db.prepare('SELECT qris_image FROM branches WHERE id=?').get(req.body.id);
+    if (cabang && cabang.qris_image) {
+        hapusBerkasQris(cabang.qris_image);
+        db.prepare('UPDATE branches SET qris_image = NULL WHERE id=?').run(req.body.id);
+    }
+    res.redirect('/cabang');
 });
 
 // POS KASIR
@@ -216,10 +302,15 @@ app.get('/kasir', (req, res) => {
       ORDER BY p.name ASC`).all(branchId);
   const settings = db.prepare('SELECT * FROM settings LIMIT 1').get();
   const vouchers = db.prepare('SELECT * FROM vouchers WHERE is_active = 1').all();
-  const branch = db.prepare('SELECT id, name FROM branches WHERE id = ?').get(branchId);
+  const customers = db.prepare('SELECT id, code, name, phone FROM customers ORDER BY name COLLATE NOCASE ASC').all();
+  const branch = db.prepare('SELECT id, name, qris_image FROM branches WHERE id = ?').get(branchId);
   const branches = db.prepare('SELECT id, name FROM branches WHERE is_active = 1 ORDER BY id ASC').all();
-  res.render('kasir', { products, settings, vouchers, branch, branches });
+  res.render('kasir', { products, settings, vouchers, customers, branch, branches });
 });
+
+// Hanya dua metode yang dilayani; daftar ini divalidasi lagi di server supaya
+// pembayaran yang tersimpan tidak bisa diisi nilai sembarang lewat request langsung.
+const METODE_BAYAR = ['TUNAI', 'QRIS'];
 
 app.post('/api/checkout', (req, res) => {
   const { cart, paymentMethod, paymentAmount, voucherId } = req.body;
@@ -236,6 +327,15 @@ app.post('/api/checkout', (req, res) => {
     return res.status(400).json({ success: false, error: 'Cabang tidak ditemukan atau sedang NONAKTIF.' });
   }
   const taxRate = Number((db.prepare('SELECT tax_rate FROM settings WHERE id = 1').get() || {}).tax_rate) || 0;
+  const metode = String(paymentMethod || '').toUpperCase();
+  if (METODE_BAYAR.indexOf(metode) === -1) {
+    return res.status(400).json({ success: false, error: 'Metode pembayaran hanya TUNAI atau QRIS.' });
+  }
+  const customerId = Number(req.body.customerId) || 0;
+  const pelanggan = customerId > 0 ? db.prepare('SELECT id, name, code FROM customers WHERE id = ?').get(customerId) : null;
+  if (customerId > 0 && !pelanggan) {
+    return res.status(400).json({ success: false, error: 'Pelanggan tidak ditemukan, muat ulang halaman kasir.' });
+  }
   const amount = Number(paymentAmount) || 0;
 
   const transaction = db.transaction(() => {
@@ -265,10 +365,12 @@ app.post('/api/checkout', (req, res) => {
 
     const tax = Math.round((subtotal - discount) * taxRate / 100);
     const total = subtotal - discount + tax;
-    if (amount < total) throw new Error('Uang pembayaran kurang Rp ' + (total - amount).toLocaleString('id-ID') + '.');
+    // QRIS tidak menerima uang fisik di kasir, jadi jumlah yang dicatat selalu sama dengan total.
+    const dibayar = metode === 'QRIS' ? total : amount;
+    if (dibayar < total) throw new Error('Uang pembayaran kurang Rp ' + (total - dibayar).toLocaleString('id-ID') + '.');
 
-    const sale = db.prepare('INSERT INTO sales (invoice_no, user_id, branch_id, subtotal, discount, tax, total, payment_method, payment_amount, return_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(invoiceNo, user.id, branchId, subtotal, discount, tax, total, paymentMethod, amount, amount - total, 'LUNAS');
+    const sale = db.prepare('INSERT INTO sales (invoice_no, user_id, branch_id, subtotal, discount, tax, total, payment_method, payment_amount, return_amount, customer_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(invoiceNo, user.id, branchId, subtotal, discount, tax, total, metode, dibayar, dibayar - total, pelanggan ? pelanggan.id : null, 'LUNAS');
 
     const insertItem = db.prepare('INSERT INTO sale_items (sale_id, product_id, qty, price, cogs, subtotal) VALUES (?, ?, ?, ?, ?, ?)');
 
@@ -276,7 +378,8 @@ app.post('/api/checkout', (req, res) => {
       insertItem.run(sale.lastInsertRowid, line.product.id, line.qty, line.product.price_sell, line.product.price_buy || 0, line.qty * line.product.price_sell);
       adjustBranchStock(line.product.id, branchId, -line.qty, 'SALE', sale.lastInsertRowid, invoiceNo, user.id);
     }
-    return { subtotal, discount, tax, total, branchName: branch.name };
+    return { subtotal, discount, tax, total, branchName: branch.name,
+      customerName: pelanggan ? pelanggan.name : null, customerCode: pelanggan ? pelanggan.code : null };
   });
   try {
     const result = transaction();
@@ -583,6 +686,12 @@ app.post('/pelanggan/edit', (req, res) => {
     try { db.prepare('UPDATE customers SET code=?, name=?, phone=?, address=? WHERE id=?').run(req.body.code, req.body.name, req.body.phone, req.body.address, req.body.id); res.redirect('/pelanggan'); } catch (err) { res.status(500).send(err.message); }
 });
 app.post('/pelanggan/delete', (req, res) => {
+    // sales menyimpan customer_id, jadi pelanggan yang sudah pernah belanja tidak boleh
+    // dihapus — kalau boleh, nama di laporan dan jejak struk kehilangan pasangannya.
+    const dipakai = db.prepare('SELECT COUNT(*) AS n FROM sales WHERE customer_id = ?').get(req.body.id).n;
+    if (dipakai > 0) {
+        return res.status(400).send('Gagal: pelanggan ini tercatat sudah ' + dipakai + ' kali belanja. Biarkan datanya agar laporan tetap nyambung.');
+    }
     try { db.prepare('DELETE FROM customers WHERE id=?').run(req.body.id); res.redirect('/pelanggan'); } catch (err) { res.status(500).send(err.message); }
 });
 
@@ -644,6 +753,7 @@ app.post('/voucher/delete', isAdmin, (req, res) => {
 // LAPORAN (Manager Cabang Bisa Lihat Laba Bersih Khusus Cabangnya)
 app.get('/laporan', (req, res) => {
     const filter = req.query.filter || 'hari_ini';
+    const member = Number(req.query.member) || 0;
     const user = req.session.user;
     
     let whereConditions = [];
@@ -659,6 +769,13 @@ app.get('/laporan', (req, res) => {
         whereParams.push(user.branch_id);
     }
 
+    // Filter member: transaksi tanpa pelanggan (customer_id NULL) sengaja tidak ikut
+    // saat satu nama dipilih, jadi angkanya konsisten dengan tabel yang tampil.
+    if (member > 0) {
+        whereConditions.push('s.customer_id = ?');
+        whereParams.push(member);
+    }
+
     const whereClause = whereConditions.length > 0 ? "WHERE " + whereConditions.join(" AND ") : "";
     const whereAktif = "WHERE " + whereConditions.concat("COALESCE(s.status, '') <> 'VOID'").join(" AND ");
 
@@ -670,13 +787,13 @@ app.get('/laporan', (req, res) => {
     const totalPages = Math.max(1, Math.ceil(jumlahBaris / PAGE_SIZE));
     const page = Math.min(Math.max(Number(req.query.page) || 1, 1), totalPages);
 
-    const ringkasan = db.prepare("SELECT COUNT(*) AS jumlah, COALESCE(SUM(s.total), 0) AS omzet FROM sales s " + whereAktif).get(...whereParams);
+    const ringkasan = db.prepare("SELECT COUNT(*) AS jumlah, COALESCE(SUM(s.total), 0) AS omzet, COALESCE(SUM(s.tax), 0) AS pajak FROM sales s " + whereAktif).get(...whereParams);
     const hpp = db.prepare(`SELECT COALESCE(SUM(COALESCE(NULLIF(si.cogs, 0), p.price_buy, 0) * si.qty), 0) AS cogs
         FROM sale_items si
         LEFT JOIN products p ON p.id = si.product_id
         JOIN sales s ON s.id = si.sale_id ` + whereAktif).get(...whereParams);
 
-    const sales = db.prepare("SELECT s.*, u.name as kasir, b.name as branch_name, vu.name as voided_by_name FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN branches b ON b.id = s.branch_id LEFT JOIN users vu ON s.voided_by = vu.id " + whereClause + " ORDER BY s.date DESC, s.id DESC LIMIT ? OFFSET ?")
+    const sales = db.prepare("SELECT s.*, u.name as kasir, b.name as branch_name, vu.name as voided_by_name, c.name as customer_name, c.code as customer_code FROM sales s LEFT JOIN users u ON s.user_id = u.id LEFT JOIN branches b ON b.id = s.branch_id LEFT JOIN users vu ON s.voided_by = vu.id LEFT JOIN customers c ON c.id = s.customer_id " + whereClause + " ORDER BY s.date DESC, s.id DESC LIMIT ? OFFSET ?")
         .all(...whereParams, PAGE_SIZE, (page - 1) * PAGE_SIZE);
 
     // Baris VOID tetap ditampilkan di tabel sebagai jejak audit, tetapi tidak dihitung
@@ -685,6 +802,10 @@ app.get('/laporan', (req, res) => {
     const totalTx = ringkasan.jumlah;
     const totalCogs = hpp.cogs;
     const labaKotor = totalRp - totalCogs;
+    // Omset yang tercatat di kasir masih memuat PPN/pajak yang harus disetor, jadi belum
+    // semuanya milik toko. Baris ini menghitung omset setelah pajak periode itu.
+    const totalPajak = ringkasan.pajak;
+    const omsetBersihPajak = totalRp - totalPajak;
 
     let expWhereConditions = [];
     const expParams = [];
@@ -708,7 +829,42 @@ app.get('/laporan', (req, res) => {
     const labaBersih = labaKotor - expTotal - payTotal;
     const settings = db.prepare('SELECT * FROM settings LIMIT 1').get();
 
-    res.render('laporan', { sales, filter, totalRp, totalTx, totalCogs, labaKotor, expTotal, payTotal, labaBersih, settings, page, totalPages, jumlahBaris, pageSize: PAGE_SIZE });
+    // Struk tidak boleh berisi token filter (BULAN_INI) karena pemilik toko harus menebak
+    // maksudnya. Tanggal diambil dari sumber yang sama dengan WHERE di atas (WIB).
+    const NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    const hariIni = todayWIB();
+    const tglPendek = (stamp) => stamp.slice(8, 10) + '/' + stamp.slice(5, 7);
+    const tglPanjang = (stamp) => stamp.slice(8, 10) + '/' + stamp.slice(5, 7) + '/' + stamp.slice(0, 4);
+    let periodeLabel, kunciPeriode, judulRincian;
+    if (filter === 'hari_ini') {
+        periodeLabel = tglPanjang(hariIni);
+        kunciPeriode = "date(s.date, 'localtime')";
+        judulRincian = 'RINCIAN PER HARI';
+    } else if (filter === 'bulan_ini') {
+        periodeLabel = NAMA_BULAN[Number(hariIni.slice(5, 7)) - 1] + ' ' + hariIni.slice(0, 4);
+        kunciPeriode = "date(s.date, 'localtime')";
+        judulRincian = 'RINCIAN PER HARI';
+    } else {
+        periodeLabel = 'Semua Periode';
+        kunciPeriode = "strftime('%Y-%m', s.date, 'localtime')";
+        judulRincian = 'RINCIAN PER BULAN';
+    }
+
+    // Rincian per periode: hanya tanggal/bulan yang punya transaksi aktif. "Barang keluar"
+    // diambil dari sale_items (jumlah pcs), bukan dari jumlah nota, dan ikut exclude VOID
+    // karena whereAktif sudah memfilter status.
+    const perPeriode = db.prepare("SELECT " + kunciPeriode + " AS kunci, COUNT(*) AS tx, COALESCE(SUM(s.total), 0) AS omzet FROM sales s " + whereAktif + " GROUP BY kunci ORDER BY kunci").all(...whereParams);
+    const pcsPerKunci = new Map(db.prepare("SELECT " + kunciPeriode + " AS kunci, COALESCE(SUM(si.qty), 0) AS pcs FROM sale_items si JOIN sales s ON s.id = si.sale_id " + whereAktif + " GROUP BY kunci").all(...whereParams).map(r => [r.kunci, r.pcs]));
+    const harian = perPeriode.map(r => ({
+        label: filter === 'semua' ? r.kunci.slice(5, 7) + '/' + r.kunci.slice(0, 4) : tglPendek(r.kunci),
+        tx: r.tx,
+        pcs: pcsPerKunci.get(r.kunci) || 0,
+        omzet: r.omzet
+    }));
+    const totalPcs = harian.reduce((acc, r) => acc + r.pcs, 0);
+
+    const customers = db.prepare('SELECT id, code, name FROM customers ORDER BY name COLLATE NOCASE ASC').all();
+    res.render('laporan', { sales, filter, member, customers, totalRp, totalTx, totalCogs, totalPcs, totalPajak, omsetBersihPajak, labaKotor, expTotal, payTotal, labaBersih, settings, page, totalPages, jumlahBaris, pageSize: PAGE_SIZE, periodeLabel, harian, judulRincian });
 });
 
 // PEMBATALAN / RETUR PENJUALAN
@@ -717,7 +873,10 @@ app.post('/laporan/void', isManagerOrAdmin, (req, res) => {
         const user = req.session.user;
         const saleId = Number(req.body.id);
         const reason = String(req.body.reason || '').trim();
-        const backTo = '/laporan' + (req.body.filter ? '?filter=' + encodeURIComponent(req.body.filter) : '');
+        const q = [];
+        if (req.body.filter) q.push('filter=' + encodeURIComponent(req.body.filter));
+        if (req.body.member) q.push('member=' + encodeURIComponent(req.body.member));
+        const backTo = '/laporan' + (q.length ? '?' + q.join('&') : '');
         if (!Number.isInteger(saleId) || saleId <= 0) return res.status(400).send('ID transaksi tidak valid.');
         if (reason.length < 3) return res.status(400).send('Alasan pembatalan wajib diisi minimal 3 karakter.');
 
@@ -765,7 +924,7 @@ app.post('/pengguna/add', isManagerOrAdmin, (req, res) => {
         const role = user.role === 'Administrator' ? req.body.role : 'Kasir';
 
         const hash = bcrypt.hashSync(req.body.password, 10);
-        db.prepare('INSERT INTO users (username, password, name, role, branch_id) VALUES (?, ?, ?, ?, ?)').run(req.body.username, hash, req.body.name, role, branchId);
+        db.prepare('INSERT INTO users (username, password, name, role, branch_id, force_pass_change) VALUES (?, ?, ?, ?, ?, 1)').run(req.body.username, hash, req.body.name, role, branchId);
         res.redirect('/pengguna');
     } catch (err) { res.status(500).send("Gagal: Username mungkin sudah digunakan."); }
 });
@@ -778,7 +937,9 @@ app.post('/pengguna/edit', isManagerOrAdmin, (req, res) => {
 
         if(req.body.password) {
             const hash = bcrypt.hashSync(req.body.password, 10);
-            db.prepare('UPDATE users SET username=?, name=?, role=?, branch_id=?, password=? WHERE id=?').run(req.body.username, req.body.name, role, branchId, hash, req.body.id);
+            const wajibGanti = Number(req.body.id) === req.session.user.id ? 0 : 1;
+            db.prepare('UPDATE users SET username=?, name=?, role=?, branch_id=?, password=?, force_pass_change=? WHERE id=?')
+                .run(req.body.username, req.body.name, role, branchId, hash, wajibGanti, req.body.id);
         } else {
             db.prepare('UPDATE users SET username=?, name=?, role=?, branch_id=? WHERE id=?').run(req.body.username, req.body.name, role, branchId, req.body.id);
         }

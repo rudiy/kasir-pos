@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uji Area Cetak Printer 58 mm</title>
+<style>
+  /* Halaman ini berdiri sendiri: tidak ikut CSS aplikasi supaya hasil cetaknya hanya
+     menentukan di mm mana kepala printer mulai dan berhenti mencetak. */
+  @page { size: 58mm auto; margin: 0; }
+  body { margin: 0; font-family: monospace; font-size: 10px; background: #f1f5f9; }
+  .petunjuk { max-width: 620px; margin: 16px auto; padding: 12px 16px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; }
+  .petunjuk h1 { font-size: 15px; margin: 0 0 8px; }
+  .petunjuk ol { margin: 0; padding-left: 18px; }
+  .petunjuk li { margin-bottom: 6px; }
+  #sheet { width: 58mm; margin: 12px auto; background: #fff; }
+  @media print {
+    .petunjuk { display: none; }
+    body { background: #fff; }
+    #sheet { margin: 0; }
+  }
+  .garis { position: absolute; top: 0; border-left: 1px solid #000; }
+  .label { position: absolute; font-size: 8px; line-height: 1; }
+  .skala { position: relative; height: 20mm; }
+  .uji { position: relative; height: 9mm; border-top: 1px dashed #000; }
+  .uji .kiri, .uji .kanan { position: absolute; top: 2mm; }
+  .uji .kiri { left: 0; }
+  .uji .kanan { right: 0; }
+  .uji .tengah { position: absolute; top: 6mm; left: 0; right: 0; text-align: center; font-size: 8px; }
+</style>
+</head>
+<body>
+  <div class='petunjuk'>
+    <h1>Cara pakai</h1>
+    <ol>
+      <li>Cetak halaman ini dari printer yang sama (MP-58X1). Di dialog Chrome pilih <strong>Paper size: ZPrinter Paper (58 x 297mm)</strong> dan <strong>Margins: None</strong>, lalu <strong>Scale: 100%</strong> (bukan Default, supaya tidak menyusut).</li>
+      <li>Lihat struk hasilnya. Baris <strong>PITA 48</strong> sampai <strong>PITA 32</strong> adalah kotak selebar 48/44/40/36 mm yang dipasang di tengah kertas. Cari baris <strong>teratas yang kedua ujungnya tercetak penuh</strong> (huruf L dan R tidak terpotong).</li>
+      <li>Skala di atasnya menunjukkan posisi dalam milimeter dari tepi kiri kertas — pakai untuk memastikan berapa mm tepi kiri yang terbuang.</li>
+      <li>Kabari hasilnya (mis. "PITA 40 penuh, PITA 44 terpotong kiri-kanan"). Lebar struk aplikasi akan saya kunci di angka itu lewat <code>--lebar-struk</code> di <code>public/css/style.css</code>.</li>
+    </ol>
+  </div>
+
+  <div id='sheet'>
+    <div class='skala' id='skala'></div>
+    <div id='pita'></div>
+    <div class='uji' style='border-top:1px dashed #000; height:6mm; text-align:center; line-height:6mm;'>--- SELESAI ---</div>
+  </div>
+
+<script>
+  const skala = document.getElementById('skala');
+  for (let mm = 0; mm <= 58; mm += 2) {
+    const g = document.createElement('div');
+    g.className = 'garis';
+    g.style.left = mm + 'mm';
+    g.style.height = (mm % 10 === 0 ? 14 : mm % 10 === 8 ? 11 : 8) + 'mm';
+    skala.appendChild(g);
+    if (mm % 10 === 0) {
+      const l = document.createElement('div');
+      l.className = 'label';
+      l.style.left = mm + 'mm';
+      l.style.top = '15mm';
+      l.textContent = mm;
+      skala.appendChild(l);
+    }
+  }
+
+  const pita = document.getElementById('pita');
+  [48, 44, 40, 36, 32].forEach((lebar) => {
+    const b = document.createElement('div');
+    b.className = 'uji';
+    // Kotak tengah: posisi left/right dibuat simetris di dalam 58 mm.
+    const sisi = (58 - lebar) / 2;
+    b.innerHTML = "<div style='position:absolute; left:" + sisi + "mm; right:" + sisi +
+      "mm; top:0; height:8mm; border-left:1px solid #000; border-right:1px solid #000;'>" +
+      "<span style='position:absolute; left:1mm; top:2mm;'>L</span>" +
+      "<span style='position:absolute; right:1mm; top:2mm;'>R</span>" +
+      "<span style='position:absolute; left:0; right:0; top:4mm; text-align:center; font-size:8px;'>PITA " + lebar + " mm</span>" +
+      "</div>";
+    pita.appendChild(b);
+  });
+</script>
+</body>
+</html>

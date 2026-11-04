@@ -16,6 +16,7 @@
             <th>Alamat</th>
             <th>Total User</th>
             <th>Status</th>
+            <th>QRIS</th>
             <th class='text-center'>Aksi</th>
           </tr>
         </thead>
@@ -38,13 +39,26 @@
                     </button>
                   </form>
                 </td>
+                <td>
+                  <% if (b.qris_image) { %>
+                    <div class='d-flex align-items-center gap-2'>
+                      <img src='<%= b.qris_image %>' alt='QRIS <%= b.name %>' style='width:42px;height:42px;object-fit:contain;background:#fff;border:1px solid #dee2e6;border-radius:4px;'>
+                      <form action='/cabang/qris/delete' method='POST' class='d-inline'>
+                        <input type='hidden' name='id' value='<%= b.id %>'>
+                        <button type='submit' class='btn btn-sm btn-outline-danger' title='Hapus gambar QRIS'><i class='bi bi-x-lg'></i></button>
+                      </form>
+                    </div>
+                  <% } else { %>
+                    <span class='text-muted small'>Belum ada</span>
+                  <% } %>
+                </td>
                 <td class='text-center'>
                   <button class='btn btn-sm btn-warning me-1' onclick='editBranch(<%= JSON.stringify(b) %>)'><i class='bi bi-pencil'></i> Edit</button>
                 </td>
               </tr>
             <% }) %>
           <% } else { %>
-            <tr><td colspan='8' class='text-center p-4 text-muted'>Belum ada data cabang toko.</td></tr>
+            <tr><td colspan='9' class='text-center p-4 text-muted'>Belum ada data cabang toko.</td></tr>
           <% } %>
         </tbody>
       </table>
@@ -72,7 +86,7 @@
 <!-- Modal Edit Cabang -->
 <div class='modal fade' id='modalEditBranch' tabindex='-1'>
   <div class='modal-dialog'>
-    <form action='/cabang/edit' method='POST' class='modal-content'>
+    <form action='/cabang/edit' method='POST' enctype='multipart/form-data' class='modal-content'>
       <div class='modal-header'><h5 class='modal-title'>Edit Cabang Toko</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
       <div class='modal-body'>
         <input type='hidden' name='id' id='edit_b_id'>
@@ -81,6 +95,15 @@
         <div class='mb-2'><label>Penanggung Jawab (PIC)</label><input type='text' name='pic_name' id='edit_b_pic' class='form-control' required></div>
         <div class='mb-2'><label>Nomor Telepon</label><input type='text' name='phone' id='edit_b_phone' class='form-control'></div>
         <div class='mb-2'><label>Alamat Lengkap</label><textarea name='address' id='edit_b_address' class='form-control' rows='2'></textarea></div>
+        <div class='mb-2'>
+          <label class='form-label'>Gambar QRIS Statis</label>
+          <div class='d-flex align-items-center gap-3 mb-2'>
+            <img id='edit_b_qris_preview' src='' alt='QRIS saat ini' style='width:96px;height:96px;object-fit:contain;background:#fff;border:1px solid #dee2e6;border-radius:8px;'>
+            <div id='edit_b_qris_kosong' class='text-muted small'>Cabang ini belum punya gambar QRIS. Pembayaran QRIS di layar kasir akan menampilkan peringatan.</div>
+          </div>
+          <input type='file' name='qris' id='edit_b_qris_file' accept='image/png,image/jpeg,image/webp' class='form-control' onchange='pratinjauQrisIni(this)'>
+          <div class='form-text'>PNG/JPG/WebP maksimal 4 MB. Gambar ini tampil penuh saat kasir memilih metode QRIS. Kosongkan bila tidak ingin mengganti.</div>
+        </div>
       </div>
       <div class='modal-footer'><button type='submit' class='btn btn-warning'>Update Cabang</button></div>
     </form>
@@ -95,7 +118,23 @@ function editBranch(b) {
     document.getElementById('edit_b_pic').value = b.pic_name || '';
     document.getElementById('edit_b_phone').value = b.phone || '';
     document.getElementById('edit_b_address').value = b.address || '';
+    aturPratinjauQris(b.qris_image || '');
+    document.getElementById('edit_b_qris_file').value = '';
     new bootstrap.Modal(document.getElementById('modalEditBranch')).show();
+}
+
+let qrisLama = '';
+
+function aturPratinjauQris(url) {
+    qrisLama = url;
+    document.getElementById('edit_b_qris_preview').style.display = url ? '' : 'none';
+    document.getElementById('edit_b_qris_kosong').style.display = url ? 'none' : '';
+    if (url) document.getElementById('edit_b_qris_preview').src = url;
+}
+
+function pratinjauQrisIni(input) {
+    const file = input.files && input.files[0];
+    aturPratinjauQris(file ? URL.createObjectURL(file) : qrisLama);
 }
 </script>
 <%- include('layout-footer') %>

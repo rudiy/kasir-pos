@@ -1,5 +1,5 @@
 <%- include('layout-header') %>
-<div class='row g-0'>
+<div class='row g-0 pos-stack'>
   <div class='col-lg-8 p-3 bg-light'>
     <div class='d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2'>
       <div class='small text-muted'>Stok yang tampil &amp; berkurang: <strong><%= branch ? branch.name : 'cabang Anda' %></strong></div>
@@ -12,7 +12,7 @@
     <input type='text' id='barcode-input' class='form-control mb-3 p-3 shadow-sm' placeholder='Scan Barcode atau Cari Produk (F2)...' autofocus>
     <div class='row g-2' id='product-grid'>
       <% products.forEach(p => { %>
-        <div class='col-6 col-md-4 col-xl-3'>
+        <div class='col-6 col-sm-4 col-xl-3'>
           <div class='card product-card h-100' data-product='<%= encodeURIComponent(JSON.stringify(p)) %>' onclick='addToCartFromData(this)'>
             <div class='card-body text-center p-2'>
               <h6 class='card-title text-truncate'><%= p.name %></h6>
@@ -39,7 +39,7 @@
 </div>
 
 <div class='modal fade' id='paymentModal' tabindex='-1'>
-  <div class='modal-dialog'>
+  <div class='modal-dialog modal-dialog-centered modal-dialog-scrollable'>
     <div class='modal-content'>
       <div class='modal-header'><h5 class='modal-title'>Pembayaran</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
       <div class='modal-body'>
@@ -65,24 +65,45 @@
         </div>
 
         <div class='mb-3'>
+          <label>Pelanggan / Member</label>
+          <input type='search' id='customer-search' class='form-control' list='customer-options'
+                 placeholder='-- Umum (tanpa member) --' autocomplete='off' onchange='pilihPelanggan()'>
+          <datalist id='customer-options'>
+            <% customers.forEach(c => { %><option value='<%= [c.code, c.name, c.phone].filter(Boolean).join(" - ") %>'></option><% }) %>
+          </datalist>
+          <div class='form-text' id='customer-hint'></div>
+        </div>
+        <div class='mb-3'>
           <label>Metode Pembayaran</label>
-          <select id='payment-method' class='form-select'><option value='TUNAI'>Tunai</option><option value='QRIS'>QRIS</option><option value='DEBIT'>Debit</option></select>
+          <select id='payment-method' class='form-select' onchange='terapkanMetodeBayar()'>
+            <option value='TUNAI'>Tunai</option>
+            <option value='QRIS'>QRIS</option>
+          </select>
         </div>
-        <div class='mb-3'>
+        <div class='mb-3' id='blok-tunai'>
           <label>Uang Diterima (Rp)</label>
-          <input type='number' id='payment-amount' class='form-control form-control-lg' oninput='calculateChange()'>
+          <div class='d-flex gap-2'>
+            <input type='number' id='payment-amount' class='form-control form-control-lg' oninput='calculateChange()'>
+            <button type='button' class='btn btn-outline-secondary' id='btn-uang-pas' onclick='uangPas()'>Uang Pas</button>
+          </div>
         </div>
-        <div class='mb-3'>
+        <div class='mb-3' id='blok-kembalian'>
           <label>Kembalian</label>
           <input type='text' id='payment-change' class='form-control form-control-lg fw-bold text-success' readonly>
         </div>
+        <div class='mb-3' id='blok-qris' style='display:none'>
+          <label>QRIS</label>
+          <div id='qris-box' class='text-center border rounded p-2 bg-white'></div>
+          <div class='form-text'>Pelanggan memindai QR ini dari aplikasi bank/ e-wallet miliknya.</div>
+        </div>
       </div>
-      <div class='modal-footer'><button class='btn btn-primary w-100' onclick='processCheckout()'>Proses & Cetak Struk</button></div>
+      <div class='modal-footer'><button class='btn btn-primary w-100' id='btn-proses' onclick='processCheckout()'>Proses & Cetak Struk</button></div>
     </div>
   </div>
 </div>
 
 <div id='print-area' style='display:none;'></div>
+<div id='qris-besar' style='display:none;' onclick='tutupQrisBesar()'></div>
 
 <script>
 let cart = [];
@@ -93,6 +114,10 @@ let finalTotal = 0;
 const TAX_RATE = <%= Number(settings.tax_rate || 0) %>;
 const CURRENT_BRANCH = <%= branch ? branch.id : 'null' %>;
 const formatter = new Intl.NumberFormat('id-ID');
+// Label di bawah harus sama persis dengan <option> datalist di atas, supaya hasil ketikan
+// bisa dicocokkan tegas. Karakter < di-escape agar nama pelanggan tidak menutup script.
+const CUSTOMERS = <%- JSON.stringify(customers.map(c => ({ id: c.id, label: [c.code, c.name, c.phone].filter(Boolean).join(' - ') }))).replace(/</g, '\\u003c') %>;
+let customerIdTerpilih = null;
 
 function addToCartFromData(card) {
   try {
@@ -178,7 +203,7 @@ function updateTotals() {
   document.getElementById('pay-discount').innerText = '- Rp ' + formatter.format(discountVal);
   document.getElementById('pay-tax').innerText = 'Rp ' + formatter.format(taxVal) + (TAX_RATE > 0 ? ' (' + TAX_RATE + '%)' : '');
   document.getElementById('modal-total').innerText = 'Rp ' + formatter.format(finalTotal);
-  calculateChange();
+  terapkanMetodeBayar();
 }
 
 function applyVoucher() {
@@ -189,6 +214,8 @@ function showPaymentModal() {
   if(cart.length === 0) return alert('Keranjang kosong!');
   document.getElementById('voucher-select').value = '';
   document.getElementById('payment-amount').value = '';
+  document.getElementById('customer-search').value = '';
+  pilihPelanggan();
   updateTotals();
   new bootstrap.Modal(document.getElementById('paymentModal')).show();
 }
@@ -199,20 +226,94 @@ function calculateChange() {
   document.getElementById('payment-change').value = change >= 0 ? 'Rp ' + formatter.format(change) : 'Uang Kurang';
 }
 
+// QRIS: blok tunai/kembalian diganti panel gambar QR statis milik cabang. Transaksi
+// baru dianggap selesai setelah kasir menekan tombol konfirmasi (uang masuk ke rekening
+// dipantau di aplikasi bank, bukan oleh aplikasi ini).
+const QRIS_CABANG = <%- JSON.stringify(branch && branch.qris_image ? branch.qris_image : '') %>;
+const NAMA_CABANG = <%- JSON.stringify(branch ? branch.name : '') %>;
+
+function terapkanMetodeBayar() {
+  const qris = document.getElementById('payment-method').value === 'QRIS';
+  document.getElementById('blok-tunai').style.display = qris ? 'none' : '';
+  document.getElementById('blok-kembalian').style.display = qris ? 'none' : '';
+  document.getElementById('blok-qris').style.display = qris ? '' : 'none';
+  document.getElementById('btn-proses').innerText = qris ? 'Sudah Dibayar & Cetak Struk' : 'Proses & Cetak Struk';
+  if (qris) renderQris();
+  else calculateChange();
+}
+
+function renderQris() {
+  const box = document.getElementById('qris-box');
+  if (!QRIS_CABANG) {
+    box.innerHTML = '<div class="alert alert-warning mb-0 text-start small">Cabang ini belum punya gambar QRIS. ' +
+      'Upload QRIS statis cabang di menu <strong>Cabang</strong> (Edit cabang &rarr; Gambar QRIS), atau gunakan metode Tunai.</div>';
+    return;
+  }
+  box.innerHTML = '<img src="' + QRIS_CABANG + '" alt="QRIS ' + NAMA_CABANG + '" class="img-fluid" style="max-height:52vh;cursor:zoom-in;">' +
+    '<div class="fw-bold mt-2">Nominal: Rp ' + formatter.format(finalTotal) + '</div>' +
+    '<div class="small text-muted">Ketuk QR untuk memperbesar supaya mudah dipindai.</div>';
+  const qrImg = box.querySelector('img');
+  qrImg.addEventListener('click', bukaQrisBesar);
+  // Isi modal lebih tinggi dari badan modal, jadi QR yang ada di bawah terpotong kalau tidak
+  // digulir, dan pemindai butuh QR utuh. Gulir hanya bila modalnya sudah benar-benar tampil:
+  // saat modal dibuka, transisi Bootstrap masih display:none pada frame pertama.
+  requestAnimationFrame(gulirKeQris);
+  if (!qrImg.complete) qrImg.addEventListener('load', () => requestAnimationFrame(gulirKeQris));
+}
+
+function gulirKeQris() {
+  const box = document.getElementById('qris-box');
+  const pen = box.closest('.modal-body');
+  if (!pen) return;
+  const kurang = box.getBoundingClientRect().bottom - pen.getBoundingClientRect().bottom;
+  if (kurang > 0) pen.scrollTop += kurang;
+}
+
+// Layar HP memotong QR di dalam modal yang bisa di-scroll (bagian bawah QR hilang),
+// padahal pemindai butuh seluruh QR berikut margin putihnya. Layer ini menutup seluruh
+// layar sehingga QR tampil seukuran layar dan tetap terbaca dari jarak 10-20 cm.
+function bukaQrisBesar() {
+  const layer = document.getElementById('qris-besar');
+  layer.innerHTML = '<div class="qris-besar-isi">' +
+    '<div class="qris-besar-nama">' + NAMA_CABANG + '</div>' +
+    '<img src="' + QRIS_CABANG + '" alt="QRIS ' + NAMA_CABANG + '">' +
+    '<div class="qris-besar-nominal">Nominal: Rp ' + formatter.format(finalTotal) + '</div>' +
+    '<div class="qris-besar-tutup">Ketuk di mana saja untuk menutup</div></div>';
+  layer.style.display = 'flex';
+}
+
+function tutupQrisBesar() {
+  document.getElementById('qris-besar').style.display = 'none';
+}
+
+function uangPas() {
+  document.getElementById('payment-amount').value = finalTotal;
+  calculateChange();
+}
+
+function pilihPelanggan() {
+  const teks = document.getElementById('customer-search').value.trim();
+  const hint = document.getElementById('customer-hint');
+  const cocok = teks ? CUSTOMERS.find(c => c.label === teks) : null;
+  customerIdTerpilih = cocok ? cocok.id : null;
+  hint.innerText = !teks ? '' : (cocok ? 'Member ' + cocok.label + ' dipilih.' : 'Nama / kode / HP tidak ada di daftar pelanggan.');
+  hint.className = 'form-text' + (cocok || !teks ? '' : ' text-danger');
+}
+
 async function processCheckout() {
-  const amount = parseFloat(document.getElementById('payment-amount').value) || 0;
-  if(amount < finalTotal) return alert('Uang pembayaran kurang Rp ' + formatter.format(finalTotal - amount) + '!');
+  const metode = document.getElementById('payment-method').value;
+  const amount = metode === 'QRIS' ? finalTotal : (parseFloat(document.getElementById('payment-amount').value) || 0);
+  if(metode !== 'QRIS' && amount < finalTotal) return alert('Uang pembayaran kurang Rp ' + formatter.format(finalTotal - amount) + '!');
   const voucher = selectedVoucher();
-  const payload = { cart: cart.map(i => ({id: i.id, qty: i.qty})), paymentMethod: document.getElementById('payment-method').value, paymentAmount: amount, voucherId: voucher ? voucher.id : null, branchId: CURRENT_BRANCH };
+  const payload = { cart: cart.map(i => ({id: i.id, qty: i.qty})), paymentMethod: metode, paymentAmount: amount, voucherId: voucher ? voucher.id : null, customerId: customerIdTerpilih, branchId: CURRENT_BRANCH };
   const res = await fetch('/api/checkout', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
   const data = await res.json();
-  if(data.success) { printReceipt(data.invoiceNo, amount, data); cart = []; renderCart(); bootstrap.Modal.getInstance(document.getElementById('paymentModal')).hide(); alert('Transaksi Berhasil!'); window.location.reload(); }
+  if(data.success) { printReceipt(data.invoiceNo, amount, data, metode); cart = []; renderCart(); bootstrap.Modal.getInstance(document.getElementById('paymentModal')).hide(); alert('Transaksi Berhasil!'); window.location.reload(); }
   else { alert('Gagal: ' + data.error); }
 }
 
-function printReceipt(invoice, amount, result) {
+function printReceipt(invoice, amount, result, metode) {
   const pa = document.getElementById('print-area');
-  pa.style.display = 'block';
   const now = new Date();
   const dateStr = now.toLocaleDateString('id-ID') + ' ' + now.toLocaleTimeString('id-ID');
 
@@ -222,6 +323,7 @@ function printReceipt(invoice, amount, result) {
   <% } %>
 
   let h = logoHtml + '<div style="text-align:center; font-family:monospace; margin-bottom:5px;"><strong><%= settings.store_name %></strong><br><%= settings.address %><br>Telp: <%= settings.phone %><br><small>' + dateStr + '</small><br>No: ' + invoice + '</div><hr style="border-top:1px dashed #000;">';
+  if(result.customerName) h += '<div style="text-align:center; font-family:monospace;"><small>Member: ' + result.customerName + (result.customerCode ? ' (' + result.customerCode + ')' : '') + '</small></div>';
   cart.forEach(i => { h += '<div style="display:flex; justify-content:space-between;"><span>' + i.name + ' (' + i.qty + ')</span><span>' + formatter.format(i.qty * i.price_sell) + '</span></div>'; });
   h += '<hr style="border-top:1px dashed #000;">';
   h += '<div style="display:flex; justify-content:space-between;"><span>Subtotal</span><span>' + formatter.format(result.subtotal) + '</span></div>';
@@ -229,13 +331,32 @@ function printReceipt(invoice, amount, result) {
   if(result.tax > 0) h += '<div style="display:flex; justify-content:space-between;"><span>Pajak <%= Number(settings.tax_rate || 0) %>%</span><span>' + formatter.format(result.tax) + '</span></div>';
   h += '<div style="display:flex; justify-content:space-between;"><strong>Total</strong><strong>' + formatter.format(result.total) + '</strong></div>';
   h += '<div style="display:flex; justify-content:space-between;"><span>Bayar</span><span>' + formatter.format(amount) + '</span></div>';
-  h += '<div style="display:flex; justify-content:space-between;"><span>Kembali</span><span>' + formatter.format(amount - result.total) + '</span></div>';
+  h += '<div style="display:flex; justify-content:space-between;"><span>Metode</span><span>' + (metode === 'QRIS' ? 'QRIS' : 'Tunai') + '</span></div>';
+  if(metode !== 'QRIS') h += '<div style="display:flex; justify-content:space-between;"><span>Kembali</span><span>' + formatter.format(amount - result.total) + '</span></div>';
   h += '<hr style="border-top:1px dashed #000;"><div style="text-align:center; font-size:10px;"><strong><%= settings.receipt_note || "NOTED: Barang yang sudah dibeli tidak bisa dikembalikan." %></strong><br><%= settings.receipt_footer || "Terima Kasih!" %></div>';
   pa.innerHTML = h;
-  document.body.classList.add('print-receipt-mode');
-  window.print();
-  document.body.classList.remove('print-receipt-mode');
-  pa.style.display = 'none';
+  const siapCetak = () => {
+    // Baru ditampilkan saat benar-benar akan dicetak, supaya isi struk tidak sempat berkedip
+    // di layar selama logo menunggu selesai dimuat.
+    pa.style.display = 'block';
+    document.body.classList.add('print-receipt-mode');
+    cetakStrukThermal();
+    document.body.classList.remove('print-receipt-mode');
+    pa.style.display = 'none';
+  };
+  // Logo disisipkan ke #print-area sepersekian detik sebelum window.print(). Kalau gambarnya
+  // belum selesai dimuat (cache dingin, pertama kali setelah restart, atau koneksi LAN lemot),
+  // Chrome sempat mengambil snapshot tanpa logo — itu sebabnya logo kadang ada kadang hilang.
+  const logo = pa.querySelector('img');
+  if (logo && !logo.complete) {
+    let sudah = false;
+    const jalan = () => { if (sudah) return; sudah = true; clearTimeout(batas); siapCetak(); };
+    const batas = setTimeout(jalan, 1200);
+    logo.addEventListener('load', jalan);
+    logo.addEventListener('error', jalan);
+  } else {
+    siapCetak();
+  }
 }
 
 function filterProductGrid(keyword) {
@@ -274,6 +395,8 @@ if (branchSwitcher) {
         window.location.href = '/kasir?branch_id=' + e.target.value;
     });
 }
+
+document.getElementById('paymentModal').addEventListener('shown.bs.modal', gulirKeQris);
 
 document.addEventListener('keydown', (e) => { if(e.key==='F2'){e.preventDefault(); document.getElementById('barcode-input').focus();} else if(e.key==='F4'){e.preventDefault(); showPaymentModal();} });
 updateTotals();

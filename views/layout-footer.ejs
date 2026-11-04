@@ -1,7 +1,44 @@
 </div>
 </div>
+
+<% /* Nav bawah hanya hidup di lebar HP (lihat .bottom-nav di style.css). Empat rute ini
+       tidak diulang lagi di sheet "Lainnya". */ %>
+<% const NAV_HP = ['/', '/kasir', '/pelanggan', '/laporan']; %>
+<% const navAktif = function (rute) { return (typeof path !== 'undefined' && path === rute) ? 'aktif' : ''; }; %>
+<% const diLainnya = typeof path !== 'undefined' && NAV_HP.indexOf(path) === -1; %>
+<div class='bottom-nav no-print' id='bottomNav'>
+  <a href='/' class='<%= navAktif("/") %>'><i class='bi bi-speedometer2'></i><span>Dashboard</span></a>
+  <a href='/laporan' class='<%= navAktif("/laporan") %>'><i class='bi bi-file-earmark-bar-graph'></i><span>Laporan</span></a>
+  <a href='/kasir' class='nav-cta <%= navAktif("/kasir") %>'><span class='cta-circle'><i class='bi bi-calculator'></i></span><span>Kasir</span></a>
+  <a href='/pelanggan' class='<%= navAktif("/pelanggan") %>'><i class='bi bi-people'></i><span>Pelanggan</span></a>
+  <button type='button' id='navSheetToggle' class='<%= diLainnya ? "aktif" : "" %>' aria-controls='navSheet' aria-expanded='false' aria-label='Buka menu lainnya'><i class='bi bi-grid-3x3-gap'></i><span>Lainnya</span></button>
+</div>
+<div class='nav-sheet-backdrop no-print' id='navSheetBackdrop'></div>
+<div class='nav-sheet no-print' id='navSheet' role='dialog' aria-modal='true' aria-label='Menu lainnya'>
+  <div class='d-flex justify-content-between align-items-center mb-2'>
+    <div class='small text-muted text-truncate'><strong><%= settings && settings.store_name ? settings.store_name : 'KASIR POS' %></strong> &middot; <%= user.name %></div>
+    <button type='button' class='btn btn-sm btn-light flex-shrink-0' id='navSheetClose' aria-label='Tutup menu'><i class='bi bi-x-lg'></i></button>
+  </div>
+  <div class='nav-sheet-menu' id='navSheetMenu'></div>
+</div>
 <script src='/vendor/bootstrap/bootstrap.bundle.min.js'></script>
 <script>
+// Chrome mencetak dengan margin default ±10 mm, jadi isi selebar 58 mm tidak muat di kertas
+// 58 mm dan sisi kanannya terpotong. Aturan @page tidak bisa dibatasi lewat class di body,
+// sehingga disisipkan tepat sebelum mencetak lalu dicabut lagi setelahnya; kalau dibiarkan
+// permanen, tombol "Cetak PDF / A4" ikut terjepit ke kertas 58 mm.
+function cetakStrukThermal() {
+    const aturan = document.createElement('style');
+    aturan.id = 'page-thermal';
+    aturan.textContent = '@media print { @page { size: 58mm auto; margin: 0; } }';
+    document.head.appendChild(aturan);
+    try {
+        window.print();
+    } finally {
+        aturan.remove();
+    }
+}
+
 const MOBILE = window.matchMedia('(max-width: 767.98px)');
 const sidebar = document.getElementById('appSidebar');
 const toggle = document.getElementById('sidebarToggle');
@@ -34,6 +71,7 @@ sidebar.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => {
 
 const onViewportChange = () => {
     document.body.classList.remove('sidebar-open');
+    document.body.classList.remove('sheet-open');
     sidebar.classList.remove('hidden');
     if (!MOBILE.matches && localStorage.getItem('sidebarHidden') === 'true') sidebar.classList.add('hidden');
     toggle.setAttribute('aria-expanded', String(isOpen()));
@@ -42,6 +80,37 @@ if (MOBILE.addEventListener) MOBILE.addEventListener('change', onViewportChange)
 else if (MOBILE.addListener) MOBILE.addListener(onViewportChange);
 
 onViewportChange();
+
+// Sheet "Lainnya" menyalin daftar menu sidebar, jadi aturan role cukup ditulis satu kali di
+// layout-header. Yang dikecualikan adalah rute yang sudah tampil di nav bawah — daftarnya
+// dibaca dari nav itu sendiri supaya kedua tempat tidak bisa berbeda sendiri.
+const sheet = document.getElementById('navSheet');
+const sheetMenu = document.getElementById('navSheetMenu');
+const sheetToggle = document.getElementById('navSheetToggle');
+const sheetBackdrop = document.getElementById('navSheetBackdrop');
+const sheetClose = document.getElementById('navSheetClose');
+
+function setSheet(open) {
+    document.body.classList.toggle('sheet-open', !!open);
+    if (sheetToggle) sheetToggle.setAttribute('aria-expanded', String(!!open));
+}
+
+if (sheet && sheetMenu) {
+    const pathnama = (href) => new URL(href, location.origin).pathname;
+    const sudah = Array.from(document.querySelectorAll('#bottomNav a')).map((a) => pathnama(a.getAttribute('href')));
+    const sumber = document.getElementById('sidebarMenu');
+    if (sumber) Array.from(sumber.children).forEach((el) => {
+        const href = el.getAttribute && el.getAttribute('href');
+        if (href && sudah.indexOf(pathnama(href)) !== -1) return;
+        sheetMenu.appendChild(el.cloneNode(true));
+    });
+    sheetMenu.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => setSheet(false)));
+}
+
+if (sheetToggle) sheetToggle.addEventListener('click', () => setSheet(!document.body.classList.contains('sheet-open')));
+if (sheetClose) sheetClose.addEventListener('click', () => setSheet(false));
+if (sheetBackdrop) sheetBackdrop.addEventListener('click', () => setSheet(false));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setSheet(false); });
 
 // Penanda koneksi + service worker. Perhatian: navigator.onLine menandakan perangkat ini
 // punya jaringan, bukan bahwa server kasir bisa dijawab; jadi penanda hanya peringatan awal,

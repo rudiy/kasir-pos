@@ -155,6 +155,8 @@ const initDB = () => {
   ensureColumn('sales', 'voided_at', 'DATETIME');
   ensureColumn('sales', 'voided_by', 'INTEGER');
   ensureColumn('sales', 'void_reason', 'TEXT');
+  ensureColumn('sales', 'customer_id', 'INTEGER');
+  ensureColumn('branches', 'qris_image', 'TEXT');
 
   const checkBranch = db.prepare('SELECT * FROM branches WHERE id = 1').get();
   if(!checkBranch) {
@@ -172,6 +174,15 @@ const initDB = () => {
     db.prepare('INSERT INTO users (username, password, role, name, branch_id) VALUES (?, ?, ?, ?, ?)').run('admin', hash, 'Administrator', 'Super Admin', 1);
     db.prepare('INSERT INTO categories (name) VALUES (?), (?)').run('Umum', 'Makanan');
   }
+  // Kolom force_pass_change sudah ada sejak skema awal tetapi tidak pernah dibaca.
+  // Sekarang penjaga login memakainya, jadi akun lama yang sudah meninggalkan sandi
+  // bawaan dibersihkan flag-nya; yang masih memakai sandi bawaan tetap dipaksa ganti.
+  const flagged = db.prepare('SELECT id, password FROM users WHERE force_pass_change = 1').all();
+  const clearFlag = db.prepare('UPDATE users SET force_pass_change = 0 WHERE id = ?');
+  for (const row of flagged) {
+    if (!bcrypt.compareSync('admin12345', row.password)) clearFlag.run(row.id);
+  }
+
   const branchIds = db.prepare('SELECT id FROM branches').all().map(b => b.id);
   const productIds = db.prepare('SELECT id FROM products').all().map(p => p.id);
   const isFirstMigration = db.prepare('SELECT COUNT(*) AS c FROM stock_movements').get().c === 0;
