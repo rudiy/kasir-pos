@@ -138,6 +138,11 @@ const initDB = () => {
       product_id INTEGER NOT NULL,
       qty INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS app_state (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
   `;
   db.exec(schema);
 
@@ -168,19 +173,64 @@ const initDB = () => {
     db.prepare('INSERT INTO settings (store_name, address, phone, receipt_footer, receipt_note) VALUES (?, ?, ?, ?, ?)').run('KASIR POS', 'Jl. Contoh No. 123', '08123456789', 'Terima Kasih Atas Kunjungan Anda', 'NOTED: Barang yang sudah dibeli tidak dapat dikembalikan.');
   }
 
+  // ---- sandi akun kunci boleh ditulis di .env ----
+  // Operator yang lupa sandi super admin sebelumnya cuma punya satu jalan kembali: mengedit
+  // database langsung. Sekarang .env yang dipakai:
+  //   ADMIN_PASSWORD         → sandi akun 'admin' (Administrator)
+  //   ADMIN_CABANG_USERNAME  → nama akun admin cabang, default 'admin_cabang'
+  //   ADMIN_CABANG_PASSWORD  → sandinya; kosong artinya ikut ADMIN_PASSWORD
+  //   ADMIN_CABANG_BRANCH    → id cabang akun itu, default 1
+  // Reset baru jalan kalau kolomnya benar-benar diisi DAN isinya berubah sejak start terakhir
+  // (bekas nilai yang sudah dipakai disimpan sebagai hash di app_state). Dua syarat itu yang
+  // membuat upgrade dari versi lama tidak membuka lagi sandi default, dan membuat ganti sandi
+  // dari halaman /ganti-sandi tidak tertimpa setiap restart. Jadi untuk memaksa reset lagi:
+  // ubah dulu angkanya di .env (satu karakter pun cukup), lalu start ulang.
+  const SANDI_BAWAAN = 'admin12345';
+  const envBersih = (kunci) => (process.env[kunci] || '').trim();
+  const sandiAdmin = envBersih('ADMIN_PASSWORD');
+  const akunCabang = envBersih('ADMIN_CABANG_USERNAME') || 'admin_cabang';
+  const sandiCabang = envBersih('ADMIN_CABANG_PASSWORD') || sandiAdmin;
+  const cabangAdmin = Number(envBersih('ADMIN_CABANG_BRANCH')) || 1;
+
+  const terapkanSandi = (username, password, role, nama) => {
+    const hash = bcrypt.hashSync(password, 10);
+    // Selama yang dipakai masih sandi default yang terdokumentasi, flag-nya tetap 1 supaya
+    // login pertama diarahkan ke halaman ganti sandi seperti sebelumnya.
+    const wajibGanti = password === SANDI_BAWAAN ? 1 : 0;
+    const ada = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (ada) {
+      db.prepare('UPDATE users SET password = ?, force_pass_change = ? WHERE id = ?').run(hash, wajibGanti, ada.id);
+    } else {
+      db.prepare('INSERT INTO users (username, password, role, name, branch_id, force_pass_change) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(username, hash, role, nama, cabangAdmin, wajibGanti);
+    }
+  };
+
   const checkAdmin = db.prepare('SELECT * FROM users WHERE username = ?').get('admin');
   if (!checkAdmin) {
-    const hash = bcrypt.hashSync('admin12345', 10);
+    const hash = bcrypt.hashSync(sandiAdmin || SANDI_BAWAAN, 10);
     db.prepare('INSERT INTO users (username, password, role, name, branch_id) VALUES (?, ?, ?, ?, ?)').run('admin', hash, 'Administrator', 'Super Admin', 1);
     db.prepare('INSERT INTO categories (name) VALUES (?), (?)').run('Umum', 'Makanan');
   }
+
+  if (sandiAdmin || sandiCabang) {
+    const tanda = [sandiAdmin, akunCabang, sandiCabang, cabangAdmin].join('\u0000');
+    const stempel = db.prepare("SELECT value FROM app_state WHERE key = 'sandi_bawaan'").get();
+    if (!stempel || !bcrypt.compareSync(tanda, stempel.value)) {
+      if (sandiAdmin) terapkanSandi('admin', sandiAdmin, 'Administrator', 'Super Admin');
+      if (sandiCabang) terapkanSandi(akunCabang, sandiCabang, 'Manager Cabang', 'Admin Cabang');
+      db.prepare("INSERT INTO app_state (key, value) VALUES ('sandi_bawaan', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        .run(bcrypt.hashSync(tanda, 10));
+    }
+  }
+
   // Kolom force_pass_change sudah ada sejak skema awal tetapi tidak pernah dibaca.
   // Sekarang penjaga login memakainya, jadi akun lama yang sudah meninggalkan sandi
   // bawaan dibersihkan flag-nya; yang masih memakai sandi bawaan tetap dipaksa ganti.
   const flagged = db.prepare('SELECT id, password FROM users WHERE force_pass_change = 1').all();
   const clearFlag = db.prepare('UPDATE users SET force_pass_change = 0 WHERE id = ?');
   for (const row of flagged) {
-    if (!bcrypt.compareSync('admin12345', row.password)) clearFlag.run(row.id);
+    if (!bcrypt.compareSync(SANDI_BAWAAN, row.password)) clearFlag.run(row.id);
   }
 
   const branchIds = db.prepare('SELECT id FROM branches').all().map(b => b.id);

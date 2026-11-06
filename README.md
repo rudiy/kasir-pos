@@ -53,6 +53,30 @@ Akun Manager Cabang dan Kasir yang dibuat lewat **Kelola Staff Kasir** ikut mend
 begitu juga akun yang sandinya di-reset admin di sana — jadi sandi awal cukup diketahui pembuatnya,
 lalu diganti sendiri oleh pemakai.
 
+### Lupa sandi? Reset lewat `.env`, tidak perlu menyentuh database
+Isi baris berikut di `.env` lalu start ulang (`npm run dev`):
+
+| kolom | fungsi |
+|---|---|
+| `ADMIN_PASSWORD` | sandi akun `admin` (Administrator / super admin) |
+| `ADMIN_CABANG_USERNAME` | nama akun admin cabang; bawaannya `admin_cabang` |
+| `ADMIN_CABANG_PASSWORD` | sandinya; kosong artinya ikut `ADMIN_PASSWORD` |
+| `ADMIN_CABANG_BRANCH` | id cabang milik akun cabang itu (lihat `/cabang`), bawaannya 1 |
+
+Cara kerjanya di `database/migrations/init.js`, dan ada dua pengaman supaya fitur ini tidak
+membuka lubang:
+
+- **Baris yang kosong diabaikan.** Install lama yang sudah mengganti sandi tidak tiba-tiba balik
+  ke `admin12345` hanya karena kode ini naik versi.
+- **Reset hanya jalan kalau nilainya berubah sejak start terakhir** (bekas nilai yang sudah dipakai
+  disimpan sebagai hash di tabel `app_state`). Jadi sandi yang diganti dari **Ganti Sandi**
+  (`/ganti-sandi`) tidak tertimpa setiap restart. Lupa lagi? Ubah satu karakter di `.env`, restart —
+  akun langsung kembali ke nilai baru itu dan diminta ganti sandi saat login pertama.
+
+Akun admin cabang dibuat otomatis dengan role **Manager Cabang** kalau nama itu belum ada; kalau
+sudah ada, yang diganti hanya sandinya (role, cabang, dan status aktif akun itu tidak disentuh).
+Akun lain — kasir, manager yang sudah ada — tidak pernah ikut berubah.
+
 ## Urutan pakai yang disarankan
 1. **Cabang Toko** (`/cabang`) — daftarkan setiap lokasi, status aktif menentukan bisa tidaknya login.
 2. **Kelola Staff Kasir** (`/pengguna`) — buat akun per cabang dengan role yang sesuai.
