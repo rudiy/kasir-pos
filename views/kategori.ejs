@@ -1,0 +1,141 @@
+<%- include('layout-header') %>
+<div class='p-4'>
+  <div class='d-flex justify-content-between align-items-center mb-3'>
+    <div>
+      <h2 class='mb-1'>Kategori Produk</h2>
+      <div class='text-muted small'>
+        <%= categories.length %> kategori · dipakai <%= categories.reduce((t, c) => t + c.product_count, 0) %> produk.
+        Kategori hanya tempat mengelompokkan di Data Produk, jadi tidak menyentuh stok maupun harga.
+      </div>
+    </div>
+    <button class='btn btn-primary' data-bs-toggle='modal' data-bs-target='#modalAddKategori' style='background-color: var(--navy);'>+ Tambah Kategori</button>
+  </div>
+
+  <% if (pesan) { %>
+    <div class='alert alert-danger alert-dismissible'><%= pesan %>
+      <button type='button' class='btn-close' data-bs-dismiss='alert'></button></div>
+  <% } %>
+  <% if (sukses) { %>
+    <div class='alert alert-success alert-dismissible'><%= sukses %>
+      <button type='button' class='btn-close' data-bs-dismiss='alert'></button></div>
+  <% } %>
+  <% if (penahanNama) { %>
+    <div class='alert alert-warning'>
+      <strong>Kategori "<%= penahanNama %>" masih dipakai <%= penahanJumlah %> produk, jadi tidak bisa dihapus.</strong>
+      <div class='small mb-2'>Pindahkan produk-produk ini ke kategori lain lewat <a href='/produk'>Data Produk</a>
+        (buka produk → Edit → Kategori), lalu hapus kategorinya. <% if (penahanJumlah > penahan.length) { %>Daftar di bawah hanya <%= penahan.length %> pertama. <% } %></div>
+      <div class='table-responsive' style='max-height:220px'>
+        <table class='table table-sm mb-0'>
+          <thead><tr><th>Barcode</th><th>Nama Produk</th><th>Harga</th><th>Status</th></tr></thead>
+          <tbody>
+            <% penahan.forEach(p => { %>
+              <tr>
+                <td><code><%= p.barcode || '-' %></code></td>
+                <td><%= p.name %></td>
+                <td class='text-end'>Rp <%= (p.price_sell || 0).toLocaleString('id-ID') %></td>
+                <td><span class='badge <%= p.is_active === 1 ? 'bg-success' : 'bg-secondary' %>'><%= p.is_active === 1 ? 'aktif' : 'nonaktif' %></span></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  <% } %>
+
+  <div class='card shadow-sm'>
+    <div class='card-body table-responsive'>
+      <table class='table table-hover align-middle'>
+        <thead class='table-light'>
+          <tr>
+            <th>Nama Kategori</th>
+            <th>Keterangan</th>
+            <th class='text-center'>Produk</th>
+            <th class='text-center'>Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (categories.length) { %>
+            <% categories.forEach(c => { %>
+              <tr>
+                <td><strong><%= c.name %></strong></td>
+                <td class='text-muted small'><%= c.description || '-' %></td>
+                <td class='text-center'>
+                  <% if (c.product_count === 0) { %>
+                    <span class='badge bg-secondary'>belum dipakai</span>
+                  <% } else { %>
+                    <span class='badge bg-info text-dark'><%= c.product_count %> produk</span>
+                    <% if (c.active_count < c.product_count) { %>
+                      <div class='small text-muted'><%= c.active_count %> aktif</div>
+                    <% } %>
+                  <% } %>
+                </td>
+                <td class='text-center text-nowrap'>
+                  <button class='btn btn-sm btn-warning me-1' onclick='editKategori(<%= JSON.stringify(c) %>)'><i class='bi bi-pencil'></i> Edit</button>
+                  <form action='/kategori/delete' method='POST' class='d-inline' onsubmit="return confirm('Hapus kategori <%= c.name %>?')">
+                    <input type='hidden' name='id' value='<%= c.id %>'>
+                    <button type='submit' class='btn btn-sm btn-outline-danger' <%= c.product_count > 0 ? 'disabled title="masih dipakai produk"' : '' %>><i class='bi bi-trash'></i></button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          <% } else { %>
+            <tr><td colspan='4' class='text-center p-4 text-muted'>Belum ada kategori. Tambahkan paling tidak satu supaya produk bisa dikelompokkan.</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Tambah Kategori -->
+<div class='modal fade' id='modalAddKategori' tabindex='-1'>
+  <div class='modal-dialog'>
+    <form action='/kategori/add' method='POST' class='modal-content'>
+      <div class='modal-header'><h5 class='modal-title'>Tambah Kategori Baru</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-body'>
+        <div class='mb-2'>
+          <label class='form-label' for='nama_baru'>Nama Kategori</label>
+          <input type='text' name='name' id='nama_baru' class='form-control' required maxlength='60' placeholder='Contoh: Minuman, Sparepart, Pakaian'>
+          <div class='form-text'>Nama tidak boleh sama dengan yang sudah ada (huruf besar/kecil dianggap sama).</div>
+        </div>
+        <div class='mb-2'>
+          <label class='form-label' for='deskripsi_baru'>Keterangan <span class='text-muted small'>(opsional)</span></label>
+          <input type='text' name='description' id='deskripsi_baru' class='form-control' maxlength='200' placeholder='Isi tulisan singkat, hanya tampil di halaman ini'>
+        </div>
+      </div>
+      <div class='modal-footer'><button type='submit' class='btn btn-primary'>Simpan Kategori</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Edit Kategori -->
+<div class='modal fade' id='modalEditKategori' tabindex='-1'>
+  <div class='modal-dialog'>
+    <form action='/kategori/edit' method='POST' class='modal-content'>
+      <div class='modal-header'><h5 class='modal-title'>Edit Kategori</h5><button type='button' class='btn-close' data-bs-dismiss='modal'></button></div>
+      <div class='modal-body'>
+        <input type='hidden' name='id' id='edit_k_id'>
+        <div class='mb-2'>
+          <label class='form-label' for='edit_k_nama'>Nama Kategori</label>
+          <input type='text' name='name' id='edit_k_nama' class='form-control' required maxlength='60'>
+          <div class='form-text'>Mengganti nama tidak mengubah produknya — produk menyimpan ID kategori, jadi label, laporan, dan layar kasir ikut menyesuaikan sendiri.</div>
+        </div>
+        <div class='mb-2'>
+          <label class='form-label' for='edit_k_deskripsi'>Keterangan</label>
+          <input type='text' name='description' id='edit_k_deskripsi' class='form-control' maxlength='200'>
+        </div>
+      </div>
+      <div class='modal-footer'><button type='submit' class='btn btn-warning'>Update Kategori</button></div>
+    </form>
+  </div>
+</div>
+
+<script>
+function editKategori(c) {
+  document.getElementById('edit_k_id').value = c.id;
+  document.getElementById('edit_k_nama').value = c.name;
+  document.getElementById('edit_k_deskripsi').value = c.description || '';
+  new bootstrap.Modal(document.getElementById('modalEditKategori')).show();
+}
+</script>
+<%- include('layout-footer') %>

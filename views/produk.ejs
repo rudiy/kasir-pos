@@ -107,6 +107,7 @@
           <select name='category_id' class='form-select'>
             <% categories.forEach(c => { %><option value='<%= c.id %>'><%= c.name %></option><% }) %>
           </select>
+          <div class='form-text'>Daftarnya dikelola di <a href='/kategori'>Kategori Produk</a>.</div>
         </div>
         <div class='row'>
             <div class='col-6 mb-2'><label class='form-label'>Harga Beli</label><input type='number' name='price_buy' class='form-control' required placeholder='0'></div>
@@ -152,6 +153,7 @@
           <select name='category_id' id='edit_category' class='form-select'>
             <% categories.forEach(c => { %><option value='<%= c.id %>'><%= c.name %></option><% }) %>
           </select>
+          <div class='form-text'>Daftarnya dikelola di <a href='/kategori'>Kategori Produk</a>.</div>
         </div>
         <div class='row'>
             <div class='col-6 mb-2'><label class='form-label'>Harga Beli</label><input type='number' name='price_buy' id='edit_price_buy' class='form-control' required></div>

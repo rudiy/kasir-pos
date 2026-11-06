@@ -80,19 +80,39 @@ Akun lain — kasir, manager yang sudah ada — tidak pernah ikut berubah.
 ## Urutan pakai yang disarankan
 1. **Cabang Toko** (`/cabang`) — daftarkan setiap lokasi, status aktif menentukan bisa tidaknya login.
 2. **Kelola Staff Kasir** (`/pengguna`) — buat akun per cabang dengan role yang sesuai.
-3. **Data Produk** (`/produk`) — tambah produk dan pilih cabang untuk stok awal.
-4. Isi stok cabang lain lewat **Stok Opname** (`/opname`) atau **Transfer Antar Cabang** (`/transfer`).
-5. **Kasir** (`/kasir`) — scan barcode atau klik produk, pilih voucher bila perlu, isi member bila
+3. **Kategori Produk** (`/kategori`) lalu **Data Produk** (`/produk`) — kategori hanya tempat
+   mengelompokkan produk dan isinya **bisa ditambah sebebasnya** dari halaman itu (Manager + Admin);
+   seed awal cuma menyediakan `Umum` dan `Makanan`. Nama kategori tidak boleh kembar (huruf besar/kecil
+   dianggap sama), dan kategori yang masih dipakai produk **tidak bisa dihapus** — halaman penolaknya
+   langsung menampilkan produk mana yang menahannya. Mengganti nama kategori aman: produk menyimpan
+   `category_id`, jadi label, laporan, dan layar kasir ikut menyesuaikan sendiri. Setelah itu baru
+   tambah produk dan pilih cabang untuk stok awal.
+4. **Cetak Barcode** (`/barcode`) — kalau kemasan barang belum ada barcode-nya, cetak labelnya di
+   sini lalu tempel. Pilih produk (bisa banyak sekaligus, lengkap dengan jumlah label per produk),
+   pilih bentuk kertas di kartu **Kertas label** (roll tanpa potong, atau die-cut 50 × 30 /
+   43 × 25 / 33 × 15 mm / ukuran sendiri), atur **Jarak antar garis potong** serta
+   **Tinggi/Lebar barcode** bila perlu (kolom ukuran barcode dibiarkan kosong = ikut ukuran kertas),
+   tekan **Cetak Label**. Belum tahu jarak potong kertasnya dan tidak punya penggaris? Tekan
+   **Cetak penggaris** di bawah kolom jarak — strip yang keluar sudah berskala milimeter, jadi garis
+   potong kertas tinggal dibaca angkanya.
+   Pada roll, satu label terbit per
+   garis putus-putus sebagai patokan gunting; pada die-cut, tiap blok dicetak setinggi
+   `min(tinggi label, jarak potong)` dan berjarak persis seperti angka yang diketik. Tekan **Pilih kandidat** untuk otomatis menandai produk yang
+   kodenya dibuatkan oleh sistem (`899` + 10 angka) — biasanya justru merekalah yang belum punya
+   label fisik. Formatnya **Code 128**, bukan EAN-13; alasannya ada di bagian **Label barcode** di
+   bawah.
+5. Isi stok cabang lain lewat **Stok Opname** (`/opname`) atau **Transfer Antar Cabang** (`/transfer`).
+6. **Kasir** (`/kasir`) — scan barcode atau klik produk, pilih voucher bila perlu, isi member bila
    pembeli sudah terdaftar, lalu bayar dan cetak struk. Metode pembayaran hanya Tunai dan QRIS;
    detailnya di bagian **Pembayaran dan member** di bawah.
-6. **Tarif Pajak** (`/pengaturan/voucher`) dipakai mengatur persentase pajak. Voucher sendiri
+7. **Tarif Pajak** (`/pengaturan/voucher`) dipakai mengatur persentase pajak. Voucher sendiri
    dibuat, diaktif/nonaktifkan, dan dihapus di halaman **Voucher / Diskon** (`/voucher`);
    **Pengaturan Toko** (`/pengaturan`) untuk nama toko, logo, dan catatan struk. Logo hanya muncul
    di **struk kasir** — struk rekap laporan tidak pernah mencantumkan logo — dan `printReceipt()`
    menunggu gambar logo selesai dimuat (maks 1,2 detik) sebelum memanggil print, karena struk
    diambil snapshot-nya sedetik setelah `<img>` disisipkan: tanpa penundaan itu logo hilang di
    pencetakan pertama setelah restart atau saat koneksi LAN lemot, lalu muncul lagi berikutnya.
-7. **Laporan Penjualan** (`/laporan`) menghitung omzet, HPP, laba kotor, dan laba bersih
+8. **Laporan Penjualan** (`/laporan`) menghitung omzet, HPP, laba kotor, dan laba bersih
    setelah pengeluaran operasional serta gaji. Ringkasan selalu dihitung atas **seluruh**
    transaksi yang cocok dengan filter, sementara tabelnya dipecah 50 baris per halaman;
    baris berstatus VOID tampil sebagai jejak audit tetapi tidak masuk angka ringkasan.
@@ -121,14 +141,15 @@ Akun lain — kasir, manager yang sudah ada — tidak pernah ikut berubah.
    tengah. Diukur langsung dengan halaman **/uji-struk.html** pada MP-58X1 milik toko: cetakan pertama
    muncul di ±5 mm dan terakhir di ±52,6 mm, jadi band cetaknya ±48 mm terpusat dan kotak rata kiri
    terpotong di dua sisi. Karena itu isinya 44 mm (7–51 mm) — 2 mm pengaman tiap sisi untuk kertas
-   yang bergeser di holder. Nilainya ada di satu tempat, `--lebar-struk` pada blok `@media print`
-   `public/css/style.css`; jangan diubah kembali menjadi rata kiri. Font monospace 10 px memuat
+   yang bergeser di holder. Nilainya ada di satu tempat, `--lebar-struk` pada `:root` di dalam blok
+   `@media print` `public/css/style.css` — dipakai struk dan label barcode sekaligus; jangan diubah
+   kembali menjadi rata kiri. Font monospace 10 px memuat
    ±30 karakter di 44 mm dan `overflow-wrap: anywhere` di sisi kiri baris membuat nama produk panjang
    turun ke baris berikutnya alih-alih mendorong harga keluar kertas.
    `/uji-struk.html` (halaman statis, tanpa login) mencetak skala milimeter 0–58 plus lima kotak uji
    simetris PITA 48/44/40/36/32 mm berhuruf `L` dan `R` di ujungnya; kotak teratas yang masih tercetak
    penuh kedua ujungnya = lebar aman. Cetak dengan Paper size 58 mm, Margins None, Scale 100 %.
-8. **Ganti Sandi** (`/ganti-sandi`) tersedia untuk semua role lewat menu sidebar — di layar HP
+9. **Ganti Sandi** (`/ganti-sandi`) tersedia untuk semua role lewat menu sidebar — di layar HP
    lewat nav bawah tombol **Lainnya**. Admin tidak perlu ikut campur saat staff ingin mengganti
    sandinya sendiri.
 
@@ -163,6 +184,143 @@ Akun lain — kasir, manager yang sudah ada — tidak pernah ikut berubah.
 - Pelanggan yang sudah pernah belanja **tidak bisa dihapus** (`/pelanggan/delete` menolak) karena
   laporan dan jejak struk mengambil namanya dari baris itu.
 
+## Kategori produk
+Aplikasi ini dipakai untuk jenis usaha apa pun, jadi daftarnya bukan daftar tetap. Tabel `categories`
+sejak awal sudah ada (`id`, `name` UNIQUE, `description`) tetapi satu-satunya isinya adalah seed
+`Umum` dan `Makanan` di `init.js` — tidak pernah ada halaman untuk menambahnya, sehingga dropdown di
+Data Produk berhenti di dua pilihan. Sekarang pengelolaannya ada di **Kategori Produk** (`/kategori`,
+`isManagerOrAdmin`, menu sidebar di bawah Data Produk sehingga ikut muncul di sheet Lainnya pada HP).
+
+- **Tambah / ganti nama** terbuka untuk Manager dan Admin. Nama dipangkas (spasi berlebih dirapatkan,
+  maksimal 60 karakter) dan dicek **case-insensitive** lewat `COLLATE NOCASE`, karena UNIQUE bawaan
+  SQLite memakai collation BINARY sehingga `Minuman` dan `minuman` boleh masuk bersamaan.
+- **Ganti nama tidak menyentuh tabel produk.** Produk menyimpan `category_id`, jadi nama lama yang
+  sudah tercetak di label, struk, dan laporan ikut berubah sendiri tanpa migrasi.
+- **Hapus diblokir selama masih ada produknya.** Rutenya mengembalikan jumlah produk pemakainya lewat
+  `/kategori?terpakai=<id>`, dan halaman itu merender daftar produk penahannya (maks 200 baris pertama,
+  jumlah aslinya tetap ditampilkan) supaya operator tahu apa yang harus dipindahkan lebih dulu.
+  Tombol hapus di tabel juga dimatikan untuk kategori terpakai, jadi penolakan tidak perlu waited dulu.
+  Persis pola proteksi hapus pelanggan (`/pelanggan/delete`).
+- Semua nilai keluar lewat `<%= %>` EJS. Nama kategori iseng seperti `<script>alert(1)</script>`
+  tersimpan apa adanya tetapi ter-render `&#60;script&#62;` (nol elemen `<script>` di dalam tabel),
+  dan tetap kembali utuh saat tombol Edit membuka modal — angka-angka itu lolos dari `onclick='...'`
+  karena JSON-nya ikut di-escape EJS.
+- **Belum ada filter kategori di layar Kasir** — grid produk sampai sekarang hanya disaring lewat
+  ketik nama/barcode. Kalau nanti kategorinya sudah puluhan, tinggal tambahkan chip filter di atas
+  grid `views/kasir.ejs`; datanya sudah siap karena `/kasir` sudah ikut menarik `category_id`.
+
+## Label barcode
+Barang yang kemasannya tidak punya barcode tetap bisa discan di kasir kalau labelnya dicetak dari
+halaman **Cetak Barcode** (`/barcode`, role Manager + Admin, sama seperti Data Produk).
+
+- Produk yang diambil **global, bukan per cabang**: label ditempel di kemasannya dan kemasan yang sama
+  berpindah antar cabang. Hanya produk aktif yang ditampilkan supaya label tidak dicetak untuk barang
+  yang sudah tidak dijual. Produk tanpa kode di database ditandai `tanpa kode` dan tidak bisa dipilih —
+  isikan atau buat kodenya dulu di Data Produk.
+- Formatnya **Code 128**, bukan EAN-13. Produk yang disimpan tanpa barcode diberi kode otomatis oleh
+  server (`'899' + 10 angka acak`, server.js), dan 13 angka acak itu **tidak memenuhi rumus digit cek
+  EAN-13** — scanner yang memeriksa digit cek akan menolak kodenya. Code 128 membaca keseluruhan
+  sebagai satu string tanpa validasi digit cek oleh pemindai biasa, jadi kode acak itu tetap terpakai.
+  Konsekuensinya: jangan ganti kodenya menjadi format EAN-13 sungguhan kecuali digit cek-nya ikut
+  dihitung.
+- Pustaka **JsBarcode 3** (MIT) di-vendor ke `public/vendor/jsbarcode/JsBarcode.all.min.js` — sama
+  seperti Bootstrap, tidak diambil dari CDN supaya kasir tetap bisa mencetak saat internet mati.
+  Berkasnya ikut diprecache di `public/sw.js`; naikkan `STATIC_CACHE` bila bentuk aset berubah.
+- Lebar barcode **selalu jatuh pada kelipatan bulat dot printer**. Head 58 mm punya 384 dot @203 dpi
+  dan pita yang benar-benar tercetak ±48 mm terpusat (diukur lewat `/uji-struk.html`), jadi isinya
+  dibatasi `--lebar-struk` = 44 mm. Dari 44 mm itu 6 mm dicadangkan untuk quiet zone (±10 modul putih
+  tiap sisi, syarat pemindai), tersisa 303 dot. SVG digambar dengan `width: 1` sehingga satu satuan
+  SVG = satu modul, jumlah modul dibaca dari atribut `width`, lalu `dotPerModul = floor(dot / modul)`
+  dan ukuran akhir dikunci lewat CSS dalam mm (`modul × dotPerModul × 25,4 / 203`). Kalau lebarnya
+  dibiarkan pecahan dot, tepi bar bergeser sepersekian dot per bar dan setelah seratus lebih bar
+  kodenya melenceng beberapa dot — gagal baca. `dotPerModul` dibatasi maksimal 4 supaya kode pendek
+  tidak melebar sia-sia.
+- Kode 13 angka memakai **Code C** (JsBarcode otomatis beralih untuk deretan angka), hasilnya 123 modul
+  → 2 dot/modul → 30,8 mm. Kode campuran sepanjang 13 karakter (misal `ABC-01`) 101 modul → 3 dot/modul.
+  Produk yang kodenya terlalu panjang sampai tidak mencapai 2 dot/modul **dilewati saat mencetak** dan
+  muncul di daftar pemberitahuan, bukan dicetak jadi barcode selebar 1 dot yang tidak bisa dipindai.
+- Alur cetaknya sama dengan struk: label dibangun di `#print-label`, `body.print-label-mode` menahan
+  seluruh halaman tetap tersembunyi kecuali area label, lalu `cetakStrukThermal()` menyisipkan
+  `@page { size: 58mm auto; margin: 0 }`. `break-inside: avoid` menjaga satu label tidak terbelah di
+  antar halaman. Barcode dibuat sebagai SVG inline sehingga tidak ada race seperti logo struk yang
+  harus menunggu gambar selesai dimuat.
+- Kartu **Kertas label** menyediakan bentuk kertas: `Roll 58 mm — tanpa potong` (satu kolom isi 44 mm,
+  tiap label ditutup garis putus-putus sebagai patokan gunting) dan preset die-cut
+  `50 × 30`, `43 × 25`, `33 × 15` mm, plus **Ukuran sendiri** (lebar 20–58, tinggi 12–80 mm).
+  Preset maupun ukuran custom hanya mengubah tiga variabel CSS pada `#print-label` (`--label-w`,
+  `--label-h`, `--label-gap`) dan kelas `.potong`; tidak ada route, tabel, atau kolom baru karena ini
+  setelan printer lokal, bukan data toko.
+- **Jarak antar garis potong (10–90 mm)** adalah kolom tersendiri dan artinya **berbeda per mode**:
+  pada die-cut angka ini adalah jarak garis-potong-ke-garis-potong, yaitu sejauh mana kertas
+  dimajukan tiap label; pada roll (kolomnya berganti judul jadi *Jarak setelah isi label*) angkanya
+  adalah ruang ekstra 0–10 mm setelah isi. Yang dulu salah tangkap: kolom ini sempat berarti
+  "celah tambahan" sehingga jarak cetak selalu `tinggi + celah` dan **tidak pernah bisa lebih kecil
+  dari tinggi label**. Padahal itu justru yang dibutuhkan kertas die-cut — MP-58X1 memajukan kertas
+  persis sejumlah yang diminta, jadi kalau kertas aslinya berpotongan tiap 29,5 mm sementara kita
+  minta 30 mm, isinya meluncur naik 0,5 mm per label dan baris harga tercetak di label berikutnya.
+  Sekarang `pitch` dibaca apa adanya dan **boleh di bawah tinggi label**: `area = min(tinggi, pitch)`
+  menjadi tinggi blok cetak (`--label-h`) dan margin antar blok `pitch − area`, selalu ≥ 0 sehingga
+  tidak pernah ada margin negatif yang bisa dirusak mesin layout. `min`/`max`/judul kolomnya
+  di-set ulang setiap preset berganti, dan mengganti preset mengisi ulang kolom ini dengan
+  `tinggi + celah` kertas baru — kertas berbeda memang punya jarak potong berbeda.
+- **Tinggi & lebar barcode (mm)** punya dua kolom sendiri di kartu yang sama; kosong artinya
+  *otomatis* dan mengikuti ukuran kertas, sedang tombol **Pakai ukuran otomatis** mengosongkan
+  keduanya lagi. Ini tuas yang benar-benar memendekkan label: di roll, tinggi 12 → 6 mm menurunkan
+  jarak cetak dari **24,06 mm** ke **18,07 mm** per label (diukur di browser, bukan dihitung).
+  Atapnya ikut area cetak — die-cut hanya boleh memakai sisa `area − dasar`, jadi permintaan 24 mm
+  pada label 50 × 30 dipangkas ke 14 mm, dan pada pitch 29,5 mm otomatis turun lagi ke 13,5 mm
+  karena 1,5 mm paling bawah label itu secara fisik sudah jadi milik label berikutnya.
+  Di roll atapnya 24 mm karena kertasnya memanjang.
+  **Lebar barcode hanya bisa dipersempit**, tidak pernah dilebarkan keluar `lebar isi − 6 mm` quiet
+  zone, dan hasilnya terkuantum ke bilangan bulat dot: kode 13 angka = 123 modul, jadi di roll ruang
+  38 mm menghasilkan 2 dot/modul = **30,78 mm** — angka manual di bawah itu melompat langsung ke
+  1 dot/modul (15,39 mm) yang ditandai merah dan produknya otomatis dilewati saat mencetak.
+  Setiap pemangkasan maupun penurunan ke 1 dot ditulis di baris info di bawah kolom, tidak disimpan
+  diam-diam.
+- Label die-cut tetap **terbatas pada pita cetak 44 mm**: lebar isi sebuah label dihitung
+  `min(lebar label, 44) − 2` mm — 2 mm pengaman, 1 mm tiap sisi, supaya tidak mepet garis potongan.
+  Karena itu label 50 × 30 mm hanya memuat barcode 42 mm, dan **dua label 33 mm sebaris tidak mungkin**
+  dicetak di printer ini: pita cetaknya ±48 mm, dua kolom 33 mm pasti terpotong di kiri-kanan. Kalau
+  nanti pindah ke printer label 80 mm, yang ditinjau ulang cuma dua tempat: `PITA_MM` di
+  `views/barcode.ejs` dan `--lebar-struk` di `public/css/style.css`.
+- **Tata letak mengikuti area cetak**, yaitu `min(tinggi label, jarak potong)`. 24 mm ke atas memakai
+  nama (maksimal dua baris, di-`line-clamp` supaya tidak bisa tumbuh tanpa batas), barcode, kode, dan
+  harga; di bawahnya turun ke tata letak ringkas — nama satu baris berelipsis, kode dan harga
+  digabung sebaris dengan font 8 px. Barcode tidak pernah memakan jatah teks:
+  `tinggiBarcode = area − dasar`, dengan `DASAR = { ringkas: 7, penuh: 16 }` mm yang **diukur dari
+  cetakan**, bukan dari rumus tinggi garis. Label 33 × 15 maupun ukuran custom seperti 38 × 19
+  karenanya tetap utuh dan tidak ada yang terpotong `overflow: hidden`. Kolom tinggi manual hanya
+  boleh memakai atap yang sama (`tinggiBarcodeMaks`), dan ukurannya dipasang langsung sebagai
+  `style` SVG (`width`/`height` dalam mm) sehingga tidak perlu variabel CSS baru.
+- **Jarak cetak = angka di kolom jarak potong**, bukan hasil jumlah tinggi label. Blok dicetak
+  setinggi `area` dengan `margin-bottom = pitch − area`, jadi jarak antar puncaknya selalu sama
+  dengan yang diketik operator (terukur 29,5 / 30 / 25 mm persis di browser). Posisi awal label
+  pertama dikoreksi lewat **Geser turun** (`--label-geser`, dipasang sebagai `top` pada kontainer
+  absolut — `padding-top` negatif tidak valid). Mobile printer seperti MP-58X1 tidak punya sensor
+  celah die-cut, jadi kalibrasinya dua tahap dan masing-masing punya gejala sendiri: **label pertama
+  sudah melenceng** atur *Geser turun*; **label pertama pas tapi yang ketiga mulai bergeser** atur
+  *jarak potong*.
+- **Cetak penggaris** (`cetakPenggaris()` + `svgPenggaris()`) menjawab "berapa jarak potong kertas
+  ini" tanpa penggaris: printer mencetak satu kolom berskala 1–125 mm, dan MP-58X1 memajukan kertas
+  0,125 mm per baris dots sehingga skala itu lebih teliti daripada penggaris plastik.
+  Sengaja satu blok memanjang tanpa tinggi label, tanpa jarak potong, dan tanpa geser — kalau tidak,
+  angka yang dibaca ikut ditentukan oleh setelan yang sedang diukur. Garis tebal di x 24–44 mm
+  menandai batas label menurut angka yang sekarang diketik, jadi geseran bisa dilihat langsung tanpa
+  berhitung. Diperiksa di browser: garis y=32 mendarat di 31,999 mm dan y=125 di 124,997 mm dari puncak
+  blok. Syaratnya cuma satu — **Scale: 100%** di dialog print, karena cetakan yang menyusut membuat
+  skalanya ikut salah.
+- Pilihan kertas, ukuran custom, jarak, ukuran barcode, dan nilai geser disimpan di `localStorage`
+  kunci `kasir-label-barcode` — di browser operator, bukan di database, karena tiap mesin punya
+  kalibrasi sendiri dan kertas yang sama dipakai berulang sepanjang hari. Kosong pada kolom tinggi
+  dan lebar barcode juga ikut disimpan, karena "otomatis" adalah pilihan operator yang harus
+  bertahan setelah halaman dimuat ulang, bukan sekadar "belum pernah diisi". Nilai jarak lama
+  (zaman kolom itu masih "celah 0–10 mm") diterjemahkan saat dipulihkan — `tinggi + celah` — supaya
+  kalibrasi orang yang sudah menyimpan setelan tidak tiba-tiba jatuh ke pitch 2 mm.
+- Kapasitas kode per ukuran ditampilkan lewat `kapasitasLabel()`: jumlah modul maksimum dicari dengan
+  mencoba kode contoh betulan sampai `dotPerModul` masih 2 — ±18 angka atau 10 karakter huruf+angka
+  pada lebar 44 mm, ±8 angka pada label 33 mm (isi 31 mm). Kode yang tidak lolos dilewati, dan
+  peringatan cetaknya menyebut angka hasil pengukuran itu, bukan angka tetap yang bisa salah.
+
 ## Struktur folder
 ```
 kasir-pos/
@@ -179,7 +337,7 @@ kasir-pos/
     backup-db.js            cadangan online + retensi, dipakai juga oleh penjadwal di server.js
   views/                    tampilan EJS, semuanya berkas datar (tanpa subfolder)
   public/                   aset statis dan hasil upload logo
-    vendor/                 Bootstrap 5.3.0 + bootstrap-icons 1.11.1 lokal (tanpa CDN)
+    vendor/                 Bootstrap 5.3.0 + bootstrap-icons 1.11.1 + JsBarcode 3 lokal (tanpa CDN)
     sw.js                   service worker: cache halaman terakhir untuk mode offline
   backup/                   hasil cadangan otomatis, tidak ikut git
 ```
@@ -194,7 +352,7 @@ kerangka (sidebar, nav bawah khusus HP + bootstrap) yang di-`include` oleh halam
 | Role | Akses |
 | --- | --- |
 | Administrator | semua halaman, boleh pindah-pilih cabang, kelola cabang/gaji/voucher/pengaturan |
-| Manager Cabang | data cabang sendiri, produk, opname, stok, transfer, pengeluaran operasional, laporan, kelola kasir di cabangnya |
+| Manager Cabang | data cabang sendiri, produk (tambah + atur kategori), cetak label barcode, opname, stok, transfer, pengeluaran operasional, laporan, kelola kasir di cabangnya |
 | Kasir | dashboard, kasir, pelanggan, laporan; tidak melihat produk/opname/stok/transfer milik cabang lain |
 
 Pencabutan akses mengikuti pola `isManagerOrAdmin` dan `canAccessBranch` di `server.js`;
@@ -243,6 +401,137 @@ luar mesin kasir secara berkala — kalau laptop kasir hilang, cadangan di dalam
 **Memulihkan:** matikan server, salin `backup/kasir-<terbaru>.db` menimpa
 `database/kasir.db`, hapus `kasir.db-wal`/`kasir.db-shm` lama bila ada, lalu jalankan
 `npm start`. Migrasi di `init.js` hanya menambah yang belum ada, jadi data lama tetap utuh.
+
+## Menjalankan di latar belakang
+`npm run dev` dan `npm start` menempel di jendela terminal: jendela ditutup, kasir mati.
+Untuk mesin kasir yang sebenarnya, jalankan sebagai proses latar belakang. Dua aturan dulu:
+
+- **Satu proses saja per folder.** `database/kasir.db` satu berkas dan scheduler cadangan
+  berjalan di dalam proses, jadi dua instance yang hidup bersamaan berarti dua scheduler
+  dan dua koneksi ke basis data yang sama.
+- **Jangan nodemon di produksi.** nodemon restart saat file `.js` berubah, termasuk saat
+  cadangan atau editor menyentuh folder proyek, dan restart di tengah transaksi membuat
+  struk tidak tercetak.
+
+### pm2 (disarankan, Linux dan Windows)
+
+```bash
+npm install -g pm2
+cd C:\Users\HRJNET\Desktop\kasir-pos
+pm2 start server.js --name kasir
+pm2 save
+```
+
+`pm2 status` untuk melihat, `pm2 logs kasir --lines 50` untuk membaca log, `pm2 restart kasir`
+untuk restart, `pm2 stop kasir` / `pm2 delete kasir` untuk melepasnya. Variarbel lingkungan
+diberikan lewat berkas `.env` di folder proyek (`dotenv` sudah dimuat `server.js`), jadi
+`PORT`, `SESSION_SECRET`, dan `BACKUP_INTERVAL_MIN` tidak perlu diulang di perintah.
+
+`pm2 startup` (hidup otomatis saat mesin nyala) **tidak mendukung Windows**. Di Windows,
+pasang auto-start lewat Task Scheduler:
+
+```powershell
+schtasks /Create /TN KasirPOS /TR "pm2 resurrect" /SC ONSTART /RU %USERNAME% /F
+```
+
+`pm2 resurrect` menjalankan kembali daftar yang tersimpan `pm2 save`, jadi tidak perlu
+mengulang perintah start tiap boot. Alternatifnya: pasang pm2 sebagai service lewat NSSM
+(`nssm install KasirPOS` lalu arahkan ke `pm2.cmd` dengan argumen `resurrect`).
+
+### Alternatif tanpa dependensi tambahan
+
+Kalau tidak mau memasang pm2, cukup sembunyikan jendelanya:
+
+```powershell
+Start-Process -FilePath "node" -ArgumentList "server.js" -WorkingDirectory "C:\Users\HRJNET\Desktop\kasir-pos" -WindowStyle Hidden
+```
+
+Cara ini tidak menahan proses tetap hidup saat mesin restart dan tidak otomatis
+menghidupkan ulang kalau proses mati, jadi hanya cocok untuk uji cepat. Untuk layanan yang
+ikut boot, pakai NSSM (`nssm install KasirPOS "C:\Program Files\nodejs\node.exe" "server.js"`)
+yang mendaftar `server.js` sebagai Windows service.
+
+### Setelah mengubah CSS
+
+`ASSET_VER` dihitung dari `mtime` `public/css/style.css` **satu kali saat proses start**, dan
+nilai itu dipakai sebagai penanda `?v=` di semua halaman. Tanpa restart, browser tetap
+meminta `style.css?v=<lama>` sehingga perubahan tampilan tidak kelihatan. Karena itu, setiap
+mengubah CSS: `pm2 restart kasir` (atau Ctrl+C lalu `npm start` ulang).
+
+## Tunneling lewat Cloudflare
+Cloudflare Tunnel (`cloudflared`) membuat kasir bisa dibuka dari luar jaringan lokal tanpa
+membuka port, tanpa IP tetap, dan tanpa memasang SSL sendiri: `cloudflared` membuka koneksi
+keluar ke Cloudflare, jadi mesin kasir hanya perlu internet.
+
+### Uji cepat (tanpa akun Cloudflare, tanpa domain)
+
+```powershell
+winget install --id Cloudflare.cloudflared
+cloudflared tunnel --url http://localhost:3000
+```
+
+Cloudflare mencetak URL `https://<acak>.trycloudflare.com` yang langsung menunjuk ke kasir.
+URL ini **tidak terlindungi apa pun**: siapa pun yang mengetahuinya bisa membuka halaman
+kasir, dan URL-nya berubah setiap kali `cloudflared` dijalankan ulang. Pakai untuk cek
+tampilan dari HP di luar WiFi toko, jangan untuk transaksi sehari-hari.
+
+### Produksi (domain sendiri + tunnel bernama)
+
+1. `cloudflared tunnel login` — browser terbuka, pilih zone domain Anda.
+2. `cloudflared tunnel create kasir-pos` — menyimpan kredensial
+   `C:\Users\<anda>\.cloudflared\<TUNNEL_ID>.json`.
+3. `cloudflared tunnel route dns kasir-pos pos.domainanda.com` — membuat DNS `CNAME` ke tunnel.
+4. Isi `C:\Users\<anda>\.cloudflared\config.yml`:
+
+```yaml
+tunnel: <TUNNEL_ID>
+credentials-file: C:\Users\<anda>\.cloudflared\<TUNNEL_ID>.json
+ingress:
+  - hostname: pos.domainanda.com
+    service: http://localhost:3000
+  - service: http_status:404
+```
+
+5. `cloudflared tunnel run kasir-pos` — cek `https://pos.domainanda.com/login` terbuka,
+   lalu pasang sebagai service Windows dari PowerShell **Run as administrator**:
+
+```powershell
+cloudflared service install
+```
+
+Service membaca `C:\ProgramData\cloudflared\config.yml`, jadi salin `config.yml` dan berkas
+`<TUNNEL_ID>.json` ke `C:\ProgramData\cloudflared\` (dan sesuaikan `credentials-file` di
+dalamnya) sebelum `service install`. Jalankan `cloudflared service uninstall` untuk melepas.
+
+### Yang wajib ditutup sebelum tunnel dipakai transaksi
+
+Aplikasi ini dibuat untuk jaringan lokal toko, jadi ekspos ke internet menambah risiko yang
+belum ditangani kode:
+
+- **Pasang Cloudflare Zero Trust Access di depan hostname.** Tanpa Access, URL tunnel adalah
+  pintu masuk kasir. Di dashboard One: *Access > Applications > Add application > Self-hosted*,
+  domain `pos.domainanda.com`, policy **Allow** untuk email owner/kasir saja. Pengguna akan
+  lewat kode OTP email sebelum menyentuh aplikasi, dan kredensial kasir tidak lagi satu-satunya
+  lapis.
+- **Ganti `SESSION_SECRET`** di `.env`. Bawaannya jatuh ke `'secret'`
+  (`server.js:33`), dan cookie sesi hanya `httpOnly; SameSite=Lax` tanpa flag `secure`
+  (`server.js:36`) — jadi rahasia itu yang menahan pemalsuan cookie.
+- **Matikan sandi default.** Login admin bawaan ditandai `force_pass_change` dan diarahkan ke
+  `/ganti-sandi`; pastikan semua akun sudah ganti sebelum hostname publik.
+- **Perhatikan port lokal.** `app.listen(PORT)` tanpa argumen host, jadi kasir tetap terbuka di
+  semua interface mesin (`http://192.168.x.x:3000`). Kalau akses LAN tidak dibutuhkan, batasi
+  3000 dengan Windows Firewall agar hanya lewat tunnel.
+- **Ukuran upload.** Gambar QRIS dan logo dibatasi 4 MB (`server.js:53`); lewat tunnel batas ini
+  tetap di sisi aplikasi, tapi Cloudflare punya batas body sendiri — kalau upload QRIS gagal di
+  tunnel padahal lokal berhasil, cek ukuran berkasnya lebih dulu.
+
+### Yang justru membaik lewat tunnel
+
+Halaman yang dibuka dari `https://pos.domainanda.com` adalah *secure context*, sehingga
+service worker di `public/sw.js` terdaftar dan HP kasir dapat salinan offline. Lewat
+`http://192.168.x.x:3000` hal itu tidak terjadi karena konteksnya tidak aman. Sisi
+buruknya: setiap hop keluar menambah latensi, dan kalau internet toko mati, tunnel ikut mati —
+kasir tetap bisa dipakai lewat alamat LAN, dengan struk QRIS dan harga yang tersaji dari cache.
 
 ## Database dan backup
 - Storage: SQLite satu berkas di `database/kasir.db`, mode WAL, foreign key aktif.
@@ -293,3 +582,6 @@ luar mesin kasir secara berkala — kalau laptop kasir hilang, cadangan di dalam
   terdahulu, jadi sudah diganti dan sebaiknya dianggap tidak dipakai lagi.
 - Berkas `kasir-pos.zip` di root adalah arsip lama, bukan bagian aplikasi, dan tidak perlu di-commit.
 - Ganti kredensial default dan batasi akses jaringan ke mesin kasir sebelum dipakai nyata.
+- Sebelum hostname hasil tunnel dipakai transaksi, selesaikan checklist di bagian
+  **Yang wajib ditutup sebelum tunnel dipakai transaksi** — yang paling penting Access
+  dan `SESSION_SECRET`.

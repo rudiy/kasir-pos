@@ -174,18 +174,31 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
   .table { width: 100% !important; border-collapse: collapse !important; }
   .table th, .table td { border: 1px solid #333 !important; padding: 4px !important; font-size: 11px; }
 
-  /* Mode Cetak Struk Kasir / Struk Thermal Laporan.
+  /* Mode Cetak Struk Kasir / Struk Thermal Laporan / Label Barcode.
      Kertas 58 mm, tapi kepala cetak printer thermal 58 mm (Zjiang/MP-58X1, 384 dot @203 dpi) hanya
      mencetak pita di tengah kertas. Diukur lewat /uji-struk.html pada MP-58X1: tick pertama muncul
      di ±5 mm dan tick terakhir di ±52,6 mm, jadi band cetaknya ±48 mm terpusat — kotak rata kiri
      0 mm terpotong di dua sisi, bukan hanya di kanan. Isi struk selebar 44 mm (7..51 mm) dan
      dipusat: 2 mm pengaman tiap sisi untuk kertas yang bergeser di holder. Ganti --lebar-struk
      saja, jangan rata kiri. */
+  :root { --lebar-struk: 44mm; }
   body.print-receipt-mode * { visibility: hidden !important; }
   body.print-receipt-mode #print-area, body.print-receipt-mode #print-area * { visibility: visible !important; }
-  body.print-receipt-mode #print-area { --lebar-struk: 44mm; position: absolute; left: 0; right: 0; top: 0; margin: 0 auto; width: var(--lebar-struk); max-width: 100%; font-size: 10px; font-family: monospace; }
+  body.print-receipt-mode #print-area { position: absolute; left: 0; right: 0; top: 0; margin: 0 auto; width: var(--lebar-struk); max-width: 100%; font-size: 10px; font-family: monospace; }
   /* Nama produk panjang + harga di ujung kanan tidak boleh saling dorong keluar kertas: sisi kiri
      boleh memotong kata, dan harga diturunkan ke baris terakhir nama supaya tetap terbaca. */
   body.print-receipt-mode #print-area div { align-items: flex-end; }
   body.print-receipt-mode #print-area div > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+
+  /* Mode Cetak Label Barcode (/barcode). Lebar maksimal pita sama dengan struk karena kertas dan
+     head-nya sama; ukuran label die-cut (--label-w/--label-h/--label-gap/--label-geser) diisi dari
+     halaman /barcode lewat style inline, bukan dari CSS. Tiap blok dikunci setinggi label + celahnya
+     supaya jarak cetak = jarak potongan; tanpa itu label kedua dst. melenceng ke atas/bawah kertas. */
+  body.print-label-mode * { visibility: hidden !important; }
+  body.print-label-mode #print-label, body.print-label-mode #print-label * { visibility: visible !important; }
+  body.print-label-mode #print-label { position: absolute; left: 0; right: 0; top: var(--label-geser, 0mm); margin: 0 auto; width: var(--label-w, var(--lebar-struk)); max-width: 100%; font-family: monospace; color: #000; }
+  body.print-label-mode #print-label .label-cetak { box-sizing: border-box; overflow: hidden; width: var(--label-w, var(--lebar-struk)); height: var(--label-h, auto); margin: 0 auto var(--label-gap, 0mm); page-break-inside: avoid; break-inside: avoid; }
+  /* Roll tanpa potong tetap pakai garis putus-putus sebagai patokan gunting operator. */
+  body.print-label-mode #print-label:not(.potong) .label-cetak { padding: 0 0 2mm; border-bottom: 1px dashed #444; }
+  body.print-label-mode #print-label.potong .label-cetak { padding-top: 1mm; }
 }

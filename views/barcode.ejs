@@ -1,0 +1,706 @@
+<%- include('layout-header') %>
+<%
+  // products datang dari /barcode: hanya produk aktif, kolom seperlunya untuk label.
+  const untukEkspor = products.map(p => ({
+    id: p.id,
+    barcode: p.barcode || '',
+    name: p.name,
+    price: p.price_sell || 0,
+    category: p.category || ''
+  }));
+%>
+<div class='p-4'>
+  <div class='d-flex flex-wrap justify-content-between align-items-center mb-1 gap-2'>
+    <div>
+      <h2 class='mb-0'>Cetak Barcode</h2>
+      <small class='text-muted'>Buat label barcode untuk barang yang kemasannya belum ada barcode-nya. Tempel labelnya, lalu scan seperti biasa di Kasir.</small>
+    </div>
+    <div class='d-flex gap-2 align-items-center'>
+      <button class='btn btn-outline-secondary btn-sm' onclick='pilihYangBelumTercetak()' title='Produk yang barcode-nya dibuat otomatis oleh sistem (kode 899...) biasanya belum pernah dicetak sebagai label.'>Pilih kandidat</button>
+      <button class='btn btn-primary' onclick='cetakTerpilih()' style='background-color: var(--navy);'><i class='bi bi-printer me-1'></i>Cetak Label</button>
+    </div>
+  </div>
+  <div class='alert alert-info py-2 small no-print'>
+    Barcode di sini berformat <strong>Code 128</strong>, bukan EAN-13. Alasannya: produk yang dibuat tanpa barcode
+    diberi kode otomatis <code>899</code> + 10 angka acak, dan 13 angka acak itu tidak memenuhi rumus digit cek EAN-13.
+    Scanner membaca Code 128 apa adanya tanpa memeriksa digit cek, jadi kodenya tetap bisa dipakai di kasir.
+  </div>
+
+  <div class='card shadow-sm mb-3'>
+    <div class='card-body'>
+      <div class='small fw-bold mb-2'>Kertas label</div>
+      <div class='row g-2 align-items-end'>
+        <div class='col-md-4'>
+          <label class='form-label small mb-1' for='preset'>Ukuran</label>
+          <select id='preset' class='form-select form-select-sm'>
+            <option value='roll'>Roll 58 mm — tanpa potong (label memanjang)</option>
+            <option value='50x30'>Die-cut 50 × 30 mm</option>
+            <option value='43x25'>Die-cut 43 × 25 mm</option>
+            <option value='33x15'>Die-cut 33 × 15 mm</option>
+            <option value='custom'>Ukuran sendiri…</option>
+          </select>
+        </div>
+        <div class='col-md-4'>
+          <div class='row g-1' id='kotakUkuran'>
+            <div class='col-6'>
+              <label class='form-label small mb-1' for='labW'>Lebar (mm)</label>
+              <input id='labW' class='form-control form-control-sm' type='number' min='20' max='58' step='0.5' value='50'>
+            </div>
+            <div class='col-6'>
+              <label class='form-label small mb-1' for='labH'>Tinggi (mm)</label>
+              <input id='labH' class='form-control form-control-sm' type='number' min='12' max='80' step='0.5' value='30'>
+            </div>
+          </div>
+        </div>
+        <div class='col-md-4'>
+          <label class='form-label small mb-1' for='geser'>Geser turun (mm)</label>
+          <div class='input-group input-group-sm'>
+            <input id='geser' class='form-control' type='number' min='-15' max='30' step='0.5' value='0'>
+            <span class='input-group-text'>mm</span>
+          </div>
+        </div>
+        <div class='col-md-4'>
+          <label class='form-label small mb-1' for='labGap'><span id='labGapJudul'>Jarak antar garis potong (mm)</span></label>
+          <div class='input-group input-group-sm'>
+            <input id='labGap' class='form-control' type='number' min='10' max='90' step='0.5' value='32'>
+            <span class='input-group-text'>mm</span>
+          </div>
+          <button id='btnPenggaris' class='btn btn-sm btn-outline-secondary mt-1' type='button' onclick='cetakPenggaris()'
+            title='Cetak strip berskala milimeter. Garis potong kertas yang membelah skala langsung menunjukkan angkanya — tanpa penggaris.'>
+            <i class='bi bi-rulers me-1'></i>Cetak penggaris, biar saya baca angkanya
+          </button>
+          <div class='form-text' id='maknaJarak'></div>
+        </div>
+      </div>
+      <div class='row g-2 align-items-end mt-1'>
+        <div class='col-md-4'>
+          <label class='form-label small mb-1' for='barT'>Tinggi barcode (mm)</label>
+          <div class='input-group input-group-sm'>
+            <input id='barT' class='form-control' type='number' min='4' max='24' step='0.5' placeholder='otomatis'>
+            <span class='input-group-text'>mm</span>
+          </div>
+        </div>
+        <div class='col-md-4'>
+          <label class='form-label small mb-1' for='barL'>Lebar barcode (mm)</label>
+          <div class='input-group input-group-sm'>
+            <input id='barL' class='form-control' type='number' min='8' max='44' step='0.5' placeholder='otomatis'>
+            <span class='input-group-text'>mm</span>
+          </div>
+        </div>
+        <div class='col-md-4'>
+          <button class='btn btn-sm btn-outline-secondary' type='button' onclick='barcodeOtomatis()'>
+            Pakai ukuran otomatis
+          </button>
+        </div>
+      </div>
+      <div id='infoKertas' class='small text-muted mt-2'></div>
+      <div id='infoBarcode' class='small text-muted'></div>
+    </div>
+  </div>
+
+  <div class='card shadow-sm mb-3'>
+    <div class='card-body'>
+      <div class='row g-2 align-items-end'>
+        <div class='col-md-5'>
+          <label class='form-label small mb-1' for='q'>Cari produk</label>
+          <input id='q' class='form-control form-control-sm' type='search' placeholder='nama, kategori, atau kode barcode'>
+        </div>
+        <div class='col-md-4'>
+          <label class='form-label small mb-1' for='kat'>Kategori</label>
+          <select id='kat' class='form-select form-select-sm'></select>
+        </div>
+        <div class='col-md-3'>
+          <div class='form-check mb-2'>
+            <input class='form-check-input' type='checkbox' id='hanyaTerpilih'>
+            <label class='form-check-label small' for='hanyaTerpilih'>Tampilkan yang terpilih saja</label>
+          </div>
+          <button class='btn btn-sm btn-outline-secondary' type='button' onclick='toggleSemuaTerlihat()' id='btnPilihSemua'>Pilih semua hasil</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class='row g-3'>
+    <div class='col-lg-7'>
+      <div class='card shadow-sm'>
+        <div class='card-body table-responsive'>
+          <table class='table table-hover align-middle mb-0'>
+            <thead class='table-light'>
+              <tr>
+                <th style='width:34px'></th>
+                <th>Nama</th>
+                <th>Barcode</th>
+                <th>Harga</th>
+                <th style='width:96px'>Jumlah</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id='daftar'></tbody>
+          </table>
+          <div id='kosong' class='text-muted small py-4 text-center d-none'>Tidak ada produk yang cocok.</div>
+        </div>
+      </div>
+    </div>
+    <div class='col-lg-5'>
+      <div class='card shadow-sm'>
+        <div class='card-header bg-white small fw-bold'>Pratinjau label</div>
+        <div class='card-body'>
+          <div class='d-flex justify-content-center' id='preview'>
+            <div class='text-muted small'>Pilih produk untuk melihat bentuk labelnya.</div>
+          </div>
+          <div id='infoUkuran' class='small text-muted mt-3'></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id='print-label' style='display:none;'></div>
+
+<script src='/vendor/jsbarcode/JsBarcode.all.min.js'></script>
+<script>
+const PRODUK = <%- JSON.stringify(untukEkspor).replace(/</g, '\\u003c') %>;
+// Baris yang dipilih -> jumlah label yang dicetak.
+const terpilih = new Map();
+const PITA_MM = 44;
+
+function fmtRp(n) { return 'Rp ' + n.toLocaleString('id-ID'); }
+
+// Nama produk bebas karakter apa saja dan disisipkan lewat innerHTML, jadi di-escape lebih dulu.
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function inisial() {
+  const kat = document.getElementById('kat');
+  const daftar = [...new Set(PRODUK.map(p => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  kat.innerHTML = "<option value=''>Semua kategori</option>" + daftar.map(c => `<option value='${esc(c)}'>${esc(c)}</option>`).join('');
+  kat.addEventListener('change', gambarDaftar);
+  document.getElementById('q').addEventListener('input', gambarDaftar);
+  document.getElementById('hanyaTerpilih').addEventListener('change', gambarDaftar);
+  pasangKontrolKertas();
+  gambarDaftar();
+}
+
+function pasangKontrolKertas() {
+  const preset = document.getElementById('preset');
+  const kolomUkuran = document.getElementById('kotakUkuran').closest('.col-md-4');
+  let presetTerakhir = null;
+  const terapkan = () => {
+    const p = PRESET[preset.value];
+    const potong = !p || p.potong;
+    const field = document.getElementById('labGap');
+    // Roll tanpa potong tidak punya ukuran label, jadi hanya kolom lebar/tinggi yang
+    // disembunyikan — kolom jaraknya tetap ada, cuma artinya berganti jadi ruang ekstra.
+    kolomUkuran.classList.toggle('d-none', !!p && !p.potong);
+    field.min = potong ? String(PITCH_MIN) : '0';
+    field.max = potong ? String(PITCH_MAKS) : '10';
+    document.getElementById('labGapJudul').textContent =
+      potong ? 'Jarak antar garis potong (mm)' : 'Jarak setelah isi label (mm)';
+    // Nilai preset hanya menimpa kolom kalau presetnya benar-benar berganti. Kalau tidak,
+    // jarak yang baru dipulihkan dari localStorage (atau diketik operator) ikut tertimpa lagi.
+    if (p && preset.value !== presetTerakhir) {
+      document.getElementById('labW').value = String(p.w);
+      document.getElementById('labH').value = String(p.h || 20);
+      // Ganti gulung kertas = ganti jarak potongnya, jadi preset yang baru mengisi ulang
+      // kolom ini dengan tinggi + celah kertasnya, bukan dengan angka lama.
+      field.value = String(p.potong ? p.h + p.gap : p.gap);
+    }
+    presetTerakhir = preset.value;
+    simpanKertas();
+    gambarInfoKertas();
+    pratinjauTerakhir();
+  };
+  preset.addEventListener('change', terapkan);
+  ['labW', 'labH'].forEach(id => document.getElementById(id).addEventListener('input', () => {
+    // Angka ukuran diketik manual di atas preset: pindahkan ke "Ukuran sendiri" supaya tidak
+    // tertimpa nilai preset saat operator mengganti ukuran lagi.
+    if (PRESET[preset.value]) preset.value = 'custom';
+    presetTerakhir = 'custom';
+    simpanKertas();
+    gambarInfoKertas();
+    pratinjauTerakhir();
+  }));
+  document.getElementById('labGap').addEventListener('input', () => {
+    // Jarak bukan ciri ukuran kertas, jadi tidak mengubah pilihan preset.
+    simpanKertas();
+    gambarInfoKertas();
+    pratinjauTerakhir();
+  });
+  document.getElementById('geser').addEventListener('input', () => {
+    simpanKertas();
+    gambarInfoKertas();
+  });
+  ['barT', 'barL'].forEach(id => document.getElementById(id).addEventListener('input', () => {
+    // Ukuran barcode juga bukan ciri kertas, jadi pilihan preset dibiarkan apa adanya.
+    simpanKertas();
+    gambarInfoKertas();
+    pratinjauTerakhir();
+  }));
+  pulihkanKertas();
+  // Setelan yang baru dipulihkan jangan sampai tertimpa nilai preset saat pemuatan pertama:
+  // presetTerakhir sengaja diisi lebih dulu supaya terapkan() menganggap presetnya tidak berubah.
+  presetTerakhir = preset.value;
+  terapkan();
+}
+
+// Ukuran label dan hasil kalibrasi dipakai berulang kali (roll yang sama sepanjang hari),
+// jadi disimpan di browser operator — bukan di database, karena ini setelan cetak lokal.
+const KUNCI_KERTAS = 'kasir-label-barcode';
+function simpanKertas() {
+  try {
+    localStorage.setItem(KUNCI_KERTAS, JSON.stringify({
+      p: document.getElementById('preset').value,
+      w: document.getElementById('labW').value,
+      h: document.getElementById('labH').value,
+      g: document.getElementById('labGap').value,
+      s: document.getElementById('geser').value,
+      t: document.getElementById('barT').value,
+      l: document.getElementById('barL').value
+    }));
+  } catch (e) { /* mode penyamaran / storage penuh: abaikan, pilihan tetap jalan di halaman ini */ }
+}
+function pulihkanKertas() {
+  let simpanan = null;
+  try { simpanan = JSON.parse(localStorage.getItem(KUNCI_KERTAS) || 'null'); } catch (e) { simpanan = null; }
+  if (!simpanan) return;
+  const preset = document.getElementById('preset');
+  if ([...preset.options].some(o => o.value === simpanan.p)) preset.value = simpanan.p;
+  if (simpanan.p === 'custom') {
+    document.getElementById('labW').value = simpanan.w;
+    document.getElementById('labH').value = simpanan.h;
+  }
+  // Kolom jarak dulu berarti "ruang ekstra 0–10 mm"; sejak jadi jarak antar garis potong,
+  // angka lama diterjemahkan lebih dulu supaya pemuatan pertama tidak jatuh ke pitch 2 mm.
+  if (simpanan.g !== undefined && simpanan.g !== '') {
+    const g = parseFloat(simpanan.g);
+    const p = PRESET[simpanan.p];
+    const modePotong = !p || p.potong;
+    let tinggi = NaN;
+    if (modePotong && Number.isFinite(g) && g <= PITCH_MIN) {
+      tinggi = simpanan.p === 'custom' ? parseFloat(simpanan.h) : (p ? p.h : 30);
+    }
+    document.getElementById('labGap').value = Number.isFinite(tinggi) ? String(tinggi + g) : simpanan.g;
+  }
+  document.getElementById('geser').value = simpanan.s;
+  // Ukuran barcode ikut dipulihkan termasuk string kosong — kosong artinya "otomatis",
+  // bukan "belum pernah diisi", jadi tidak boleh dibiarkan tertinggal nilai preset lama.
+  if (simpanan.t !== undefined) document.getElementById('barT').value = simpanan.t;
+  if (simpanan.l !== undefined) document.getElementById('barL').value = simpanan.l;
+}
+
+// Pratinjau selalu mengikuti ukuran kertas terakhir yang dipilih operator.
+let idPratinjau = null;
+function pratinjauTerakhir() { if (idPratinjau) pratinjau(idPratinjau); }
+
+function hasilSaring() {
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const kat = document.getElementById('kat').value;
+  const hanya = document.getElementById('hanyaTerpilih').checked;
+  return PRODUK.filter(p => {
+    if (hanya && !terpilih.has(p.id)) return false;
+    if (kat && p.category !== kat) return false;
+    if (!q) return true;
+    return p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || p.barcode.includes(q);
+  });
+}
+
+function gambarDaftar() {
+  const rows = hasilSaring();
+  document.getElementById('kosong').classList.toggle('d-none', rows.length > 0);
+  const terlihat = rows.filter(p => p.barcode).length;
+  document.getElementById('btnPilihSemua').textContent =
+    rows.every(p => p.barcode && terpilih.has(p.id)) && terlihat > 0 ? 'Kosongkan pilihan' : 'Pilih semua hasil';
+  document.getElementById('daftar').innerHTML = rows.map(p => {
+    const on = terpilih.has(p.id);
+    const qty = terpilih.get(p.id) || 1;
+    return `<tr>
+      <td><input class='form-check-input' type='checkbox' ${on ? 'checked' : ''} ${p.barcode ? '' : 'disabled'}
+          onchange='ubahPilih(${p.id}, this.checked)'></td>
+      <td><strong>${esc(p.name)}</strong><div class='small text-muted'>${esc(p.category) || '-'}</div></td>
+      <td>${p.barcode ? `<code>${esc(p.barcode)}</code>` : "<span class='badge bg-warning text-dark'>tanpa kode</span>"}</td>
+      <td class='text-nowrap'>${fmtRp(p.price)}</td>
+      <td><input class='form-control form-control-sm text-center' type='number' min='1' max='200' value='${qty}'
+          ${on ? '' : 'disabled'} onchange='ubahJumlah(${p.id}, this.value)' id='qty-${p.id}'></td>
+      <td class='text-end'><button class='btn btn-sm btn-outline-secondary' ${p.barcode ? '' : 'disabled'}
+          onclick='pratinjau(${p.id})' title='Lihat pratinjau label'><i class='bi bi-eye'></i></button></td>
+    </tr>`;
+  }).join('');
+}
+
+function ubahPilih(id, ya) {
+  if (ya) terpilih.set(id, 1); else terpilih.delete(id);
+  gambarDaftar();
+  if (ya) pratinjau(id);
+}
+
+function ubahJumlah(id, nilai) {
+  const n = Math.max(1, Math.min(200, parseInt(nilai || '1', 10) || 1));
+  terpilih.set(id, n);
+  document.getElementById('qty-' + id).value = n;
+}
+
+function toggleSemuaTerlihat() {
+  const rows = hasilSaring().filter(p => p.barcode);
+  const semuaSudah = rows.length > 0 && rows.every(p => terpilih.has(p.id));
+  rows.forEach(p => { semuaSudah ? terpilih.delete(p.id) : terpilih.set(p.id, terpilih.get(p.id) || 1); });
+  gambarDaftar();
+}
+
+function pilihYangBelumTercetak() {
+  // 899 + 10 angka acak = kode yang dibuat server saat produk disimpan tanpa barcode.
+  // Label fisik untuk produk seperti inilah yang paling sering belum ditempel.
+  PRODUK.filter(p => /^899\d{10}$/.test(p.barcode)).forEach(p => terpilih.set(p.id, terpilih.get(p.id) || 1));
+  document.getElementById('hanyaTerpilih').checked = true;
+  gambarDaftar();
+}
+
+// ---- ukuran kertas label ----
+// Roll die-cut: satu baris label per putaran kertas, jadi tinggi label + celahnya yang
+// menentukan jarak cetak. Lebar isi tetap dibatasi pita cetak 44 mm (--lebar-struk),
+// bukan selebar labelnya, karena head MP-58X1 tidak menjangkau tepi 58 mm.
+const PRESET = {
+  roll: { w: 44, h: 0, gap: 0, potong: false },
+  '50x30': { w: 50, h: 30, gap: 2, potong: true },
+  '43x25': { w: 43, h: 25, gap: 2, potong: true },
+  '33x15': { w: 33, h: 15, gap: 2, potong: true }
+};
+
+function angkaBidang(id, min, maks, fallback) {
+  const n = parseFloat(document.getElementById(id).value);
+  return Number.isFinite(n) ? Math.min(maks, Math.max(min, n)) : fallback;
+}
+
+// Kolom ukuran barcode boleh dibiarkan kosong artinya "otomatis", jadi tidak ada fallback angka.
+function angkaBebas(id, min, maks) {
+  const n = parseFloat(document.getElementById(id).value);
+  return Number.isFinite(n) ? Math.min(maks, Math.max(min, n)) : null;
+}
+
+// ---- jarak antar garis potong ----
+// Yang menentukan posisi cetak bukan tinggi labelnya, tapi jarak dari satu garis potong ke
+// garis potong berikutnya. Angka itu boleh LEBIH KECIL dari tinggi label: MP-58X1 memajukan
+// kertas persis sejumlah yang diminta, jadi kalau kertas aslinya berpotongan tiap 29,5 mm
+// sementara kita minta 30 mm, isinya meluncur naik ±0,5 mm per label dan setelah empat label
+// harga tercetak di label sebelah. Kolom ini yang dicari operator waktu bilang "kelewat jauh".
+const PITCH_MIN = 10, PITCH_MAKS = 90;
+
+function kertasLabel() {
+  const pilih = document.getElementById('preset').value;
+  const geser = angkaBidang('geser', -15, 30, 0);
+  const barT = angkaBebas('barT', 4, 24);
+  const barL = angkaBebas('barL', 8, 44);
+  const k = PRESET[pilih]
+    ? Object.assign({}, PRESET[pilih])
+    : { w: angkaBidang('labW', 20, 58, 50), h: angkaBidang('labH', 12, 80, 30), gap: 2, potong: true };
+  if (k.potong) {
+    k.pitch = angkaBidang('labGap', PITCH_MIN, PITCH_MAKS, k.h + k.gap);
+    // Isi tidak boleh melewati satu langkah kertas: blok dicetak setinggi area ini, dan
+    // margin antar blok sisanya. Dengan begitu margin tidak pernah negatif.
+    k.area = Math.min(k.h, k.pitch);
+    k.gap = k.pitch - k.area;
+  } else {
+    // Roll tidak punya garis potong acuan; di kolom yang sama angkanya berarti ruang
+    // tambahan SETELAH isi label, bukan jarak potong.
+    k.pitch = null;
+    k.gap = angkaBidang('labGap', 0, 10, 0);
+  }
+  k.geser = geser; k.barT = barT; k.barL = barL;
+  return k;
+}
+
+// Isi die-cut dikurangi 1 mm tiap sisi supaya tidak mepet ke tepi potongan.
+function lebarIsi(k) { return k.potong ? Math.min(k.w, PITA_MM) - 2 : PITA_MM; }
+
+// Tinggi yang benar-benar boleh dipakai isi. Pada die-cut yang membatasi bukan tinggi label
+// tapi jarak potongnya — isi sepanjang apa pun yang melewati itu tercetak di label sebelah.
+function tinggiArea(k) { return k.potong ? k.area : null; }
+
+// Tinggi label dipakai jatah per bagian: teks lebih dulu, barcode mengambil sisanya.
+// Angka DASAR di bawah adalah tinggi label tanpa gambar barcode, diukur dari cetakan
+// asli (bukan perhitungan garis teks), supaya tidak ada label yang isinya terpotong
+// hanya karena namanya panjang.
+const DASAR = { ringkas: 7, penuh: 16 };
+const TINGGI_BARCODE_MIN = 4;
+const TINGGI_BARCODE_MAKS = 14;
+const TINGGI_BARCODE_KOLOM = 24;
+
+// Label di bawah 24 mm tidak cukup untuk nama dua baris + kode + harga, jadi turun ke
+// tata letak ringkas: nama satu baris, kode dan harga sebaris. Yang dihitung adalah area
+// cetak, bukan tinggi labelnya, karena jarak potong yang lebih sempit memberi efek sama.
+function pakaiTataLetakPenuh(k) { const area = tinggiArea(k); return area == null || area >= 24; }
+
+function dasarTataLetak(k) { return pakaiTataLetakPenuh(k) ? DASAR.penuh : DASAR.ringkas; }
+
+// Atap tinggi barcode. Die-cut: hanya sisa area cetak setelah teks yang boleh dipakai,
+// altrimenti isi terpotong. Roll: kertasnya memanjang tanpa batas, jadi yang membatasi
+// cuma kolom inputnya.
+function tinggiBarcodeMaks(k) {
+  const area = tinggiArea(k);
+  return area == null ? TINGGI_BARCODE_KOLOM : Math.max(TINGGI_BARCODE_MIN, area - dasarTataLetak(k));
+}
+
+function tinggiBarcode(k) {
+  if (k.barT != null) return Math.min(tinggiBarcodeMaks(k), Math.max(TINGGI_BARCODE_MIN, k.barT));
+  if (!k.potong) return 12;
+  return Math.max(TINGGI_BARCODE_MIN, Math.min(TINGGI_BARCODE_MAKS, tinggiArea(k) - dasarTataLetak(k)));
+}
+
+// Tempat bar dicetak: lebar isi dikurangi quiet zone 6 mm (10 modul putih tiap sisi).
+// Kolom Lebar barcode hanya boleh mempersempit, tidak pernah melebarkan bar keluar pita.
+function ruangBarcode(k) {
+  const otomatis = lebarIsi(k) - 6;
+  return k.barL == null ? otomatis : Math.min(otomatis, k.barL);
+}
+
+// ---- ukuran barcode ----
+// Printer thermal 58 mm punya 384 dot @203 dpi, tapi head MP-58X1 hanya mencetak pita
+// selebar ±48 mm di tengah kertas, jadi isi dibatasi 44 mm (--lebar-struk di style.css).
+// Dari lebar isi itu 6 mm dicadangkan sebagai quiet zone (10 modul putih tiap sisi, syarat
+// scanner) dan satu modul dicetak selebar bilangan bulat dot. Kalau modul punya lebar
+// pecahan dot, tepi bar bergeser seperseratus dot tiap bar dan setelah 120 bar kodenya
+// sudah melenceng beberapa dot — scanner gagal baca.
+function jumlahModul(code) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  JsBarcode(svg, code, { format: 'code128', width: 1, height: 20, margin: 0, displayValue: false });
+  // width:1 membuat 1 satuan SVG = 1 modul, dan atribut width SVG adalah ceil(jumlah modul).
+  return Math.round(parseFloat(svg.getAttribute('width')));
+}
+
+function ukuranBarcode(code, ruangMM) {
+  const ruang = ruangMM == null ? ruangBarcode(kertasLabel()) : ruangMM;
+  const dotTersedia = Math.floor(ruang * 203 / 25.4);
+  const modul = jumlahModul(code);
+  const dotPerModul = Math.min(4, Math.floor(dotTersedia / modul));
+  return { modul: modul, dotPerModul: dotPerModul, mm: modul * dotPerModul * 25.4 / 203, layak: dotPerModul >= 2, ruang: ruang };
+}
+
+// Berapa banyak karakter yang masih tercetak 2 dot/modul pada ruang barcode tertentu.
+// Dicari dengan mencoba kode contoh betulan, jadi angkanya mengikuti tabel pola
+// Code 128 yang dipakai JsBarcode dan bukan tebakan rumus.
+function kapasitasLabel(ruangMM) {
+  const modulMaks = Math.floor(Math.floor(ruangMM * 203 / 25.4) / 2);
+  const coba = (buat) => {
+    let lo = 1, hi = 40;
+    while (lo < hi) {
+      const tengah = Math.ceil((lo + hi) / 2);
+      if (jumlahModul(buat(tengah)) <= modulMaks) lo = tengah; else hi = tengah - 1;
+    }
+    return lo;
+  };
+  return {
+    modulMaks: modulMaks,
+    angka: coba(n => '899' + '1'.repeat(Math.max(0, n - 3))),
+    huruf: coba(n => 'AB' + 'C'.repeat(Math.max(0, n - 2)))
+  };
+}
+
+// SVG digambar dengan satuan modul (width:1) lalu ukurannya dikunci lewat CSS dalam mm,
+// supaya setiap modul jatuh tepat pada dotPerModul dot printer dan tingginya bebas diatur.
+function svgBarcode(code, k) {
+  const u = ukuranBarcode(code, ruangBarcode(k));
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  JsBarcode(el, code, { format: 'code128', width: 1, height: 20, margin: 0, displayValue: false, lineColor: '#000000' });
+  el.setAttribute('preserveAspectRatio', 'none');
+  el.style.display = 'block';
+  el.style.width = u.mm.toFixed(4) + 'mm';
+  el.style.height = tinggiBarcode(k) + 'mm';
+  return { html: el.outerHTML, ukuran: u };
+}
+
+// Label tinggi 15 mm hanya punya ruang satu baris teks di atas dan satu di bawah barcode,
+// jadi nama dipotong satu baris dan harga digabung dengan kodenya.
+function labelHTML(p, k) {
+  const kertas = k || kertasLabel();
+  const b = svgBarcode(p.barcode, kertas);
+  if (!pakaiTataLetakPenuh(kertas)) {
+    return "<div style='font-size:8px; text-align:center; line-height:1.1'>" +
+      "<div style='font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>" + esc(p.name) + "</div>" +
+      "<div style='display:flex; justify-content:center; margin:0.5mm 0;'>" + b.html + "</div>" +
+      "<div style='white-space:nowrap; overflow:hidden;'>" + esc(p.barcode) + " &nbsp; " + fmtRp(p.price) + "</div>" +
+      "</div>";
+  }
+  return "<div style='font-size:9px; text-align:center; line-height:1.15;'>" +
+    "<div style='font-weight:700; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;'>" + esc(p.name) + "</div>" +
+    "<div style='display:flex; justify-content:center; margin:1mm 0 0.6mm;'>" + b.html + "</div>" +
+    "<div style='letter-spacing:0.4px;'>" + esc(p.barcode) + "</div>" +
+    "<div style='font-weight:700;'>" + fmtRp(p.price) + "</div>" +
+    "</div>";
+}
+
+function gambarInfoKertas() {
+  const k = kertasLabel();
+  const isi = lebarIsi(k);
+  const ruang = ruangBarcode(k);
+  const tinggi = tinggiBarcode(k);
+  const b = ukuranBarcode('8993712345678', ruang);
+  const kap = kapasitasLabel(ruang);
+  const makna = document.getElementById('maknaJarak');
+  const bagian = [];
+  if (k.potong) {
+    const area = tinggiArea(k);
+    bagian.push(`Label ${k.w} × ${k.h} mm, isi dicetak selebar <strong>${isi.toFixed(0)} mm</strong>, kertas dimajukan <strong>${k.pitch} mm</strong> per label (jarak garis potong ke garis potong).`);
+    if (area < k.h) {
+      bagian.push(`Jarak potong lebih kecil dari tinggi label, jadi area cetak dipangkas ke <strong>${area.toFixed(1)} mm</strong>: ` +
+        `${(k.h - area).toFixed(1)} mm paling bawah tidak ikut tercetak.`);
+    }
+    if (makna) makna.innerHTML = 'Tidak ada penggaris? Tekan tombol di atas: strip yang tercetak <strong>sudah berskala milimeter</strong>, karena langkah kertas printer lebih ' +
+      'teliti daripada penggaris plastik. Baca angka yang jatuh di <strong>dua garis potong kertas yang berurutan</strong>, selisihnya yang diketik di sini — potong di angka 12 dan ' +
+      'potong berikutnya di 41 berarti jaraknya 29 mm. Garis potong yang makin jauh dari tanda "setelan" ke bawah strip = angka kolom ini yang belum pas.';
+  } else {
+    bagian.push(`Roll tanpa potong: isi ${isi} mm, tiap label ditutup garis putus-putus sebagai patokan gunting. Ruang ekstra setelah isi <strong>${k.gap} mm</strong>${k.gap === 0 ? ' (label saling menempel)' : ''}.`);
+    if (makna) makna.innerHTML = `Isi satu label ±${(24 - 12 + tinggi).toFixed(0)} mm (barcode ${tinggi} + tiga baris teks) + ruang ekstra ${k.gap} mm. ` +
+      'Di roll kolom ini menambah ruang <em>setelah</em> isi; yang memendekkan labelnya adalah kolom tinggi barcode.';
+  }
+  bagian.push(`Ruang sekecil itu memuat maksimal ±${kap.modulMaks} modul ≈ <strong>${kap.angka} angka</strong> atau <strong>${kap.huruf} karakter</strong> huruf+angka. ` +
+    (b.layak ? `Kode 13 angka = ${b.modul} modul → ${b.dotPerModul} dot/modul, aman.`
+             : `Kode 13 angka (${b.modul} modul) <strong class="text-danger">tidak akan tercetak andal di ukuran ini</strong> dan otomatis dilewati.`));
+  if (k.potong) {
+    bagian.push('Mobile printer seperti MP-58X1 tidak punya sensor celah, jadi kalibrasinya dua tahap: ' +
+      '<strong>Geser turun</strong> mengatur posisi label pertama, <strong>jarak antar garis potong</strong> mengatur langkah berikutnya. ' +
+      'Label pertama pas tapi yang ketiga sudah melenceng = jarak potongnya yang salah, bukan gesernya. ' +
+      'Kedua angka itu terbaca dari strip penggaris di atas — asal dialog print-nya <strong>Scale: 100%</strong>, karena skala yang menyusut ikut salah.');
+  }
+  document.getElementById('infoKertas').innerHTML = bagian.join('<br>');
+
+  const info = document.getElementById('infoBarcode');
+  if (info) {
+    const baris = [`Ukuran barcode yang tercetak: <strong>${b.mm.toFixed(1)} × ${tinggi} mm</strong>, ${b.dotPerModul} dot per modul (${k.barT == null && k.barL == null ? 'otomatis' : 'manual'}).`];
+    const tinggiMaks = tinggiBarcodeMaks(k);
+    if (k.barT != null && k.barT > tinggiMaks) {
+      baris.push(`Tinggi ${k.barT} mm dipangkas ke <strong>${tinggiMaks} mm</strong>: label ${k.h} mm hanya menyisakan ruang itu setelah teks (±${dasarTataLetak(k)} mm).`);
+    }
+    if (k.barL != null && ruang < k.barL) {
+      baris.push(`Lebar ${k.barL} mm dipangkas ke <strong>${ruang.toFixed(1)} mm</strong>: itu batas aman di isi ${isi.toFixed(0)} mm setelah quiet zone 6 mm.`);
+    }
+    if (!b.layak) {
+      baris.push('<span class="text-danger">Satu modul tinggal 1 dot — scanner sering gagal membacanya, jadi produk model ini otomatis dilewati saat mencetak. ' +
+        'Naikkan lagi kolom Lebar barcode atau tekan <strong>Pakai ukuran otomatis</strong>.</span>');
+    }
+    info.innerHTML = baris.join('<br>');
+  }
+}
+
+// Tombol "Pakai ukuran otomatis": kolom dikosongkan, bukan diisi angka, supaya tinggi dan
+// lebar kembali mengikuti ukuran kertas yang dipilih operator.
+function barcodeOtomatis() {
+  document.getElementById('barT').value = '';
+  document.getElementById('barL').value = '';
+  simpanKertas();
+  gambarInfoKertas();
+  pratinjauTerakhir();
+}
+
+function pratinjau(id) {
+  const p = PRODUK.find(x => x.id === id);
+  if (!p || !p.barcode) return;
+  idPratinjau = id;
+  const k = kertasLabel();
+  const b = svgBarcode(p.barcode, k);
+  const kotak = `width:${k.w}mm;` + (k.potong ? `height:${k.h}mm;` : '') + 'box-sizing:border-box;overflow:hidden;';
+  document.getElementById('preview').innerHTML = "<div class='bg-white border rounded p-1' style='" + kotak + "'>" + labelHTML(p, k) + "</div>";
+  document.getElementById('infoUkuran').innerHTML =
+    `Kode <code>${esc(p.barcode)}</code> = ${b.ukuran.modul} modul Code 128. ` +
+    (b.ukuran.layak
+      ? `Dicetak ${b.ukuran.dotPerModul} dot per modul, lebar ${b.ukuran.mm.toFixed(1)} × tinggi ${tinggiBarcode(k)} mm dari ruang bar ${b.ukuran.ruang.toFixed(1)} mm.`
+      : `<strong class='text-danger'>Tidak muat di ruang bar ${b.ukuran.ruang.toFixed(1)} mm dengan lebar bar yang andal (kurang dari 2 dot per modul) — produk ini dilewati saat mencetak.</strong>`);
+}
+
+// ---- penggaris kalibrasi (tanpa penggaris sungguhan) ----
+// Kolom "jarak antar garis potong" tidak bisa diisi dengan mengira-ngira, tapi operatornya juga
+// tidak punya penggaris. Jadi printer-nya yang jadi penggaris: MP-58X1 memajukan kertas 0,125 mm
+// per baris dots dan garis SVG setebal 0,2 mm mendarat di baris dots itu, sehingga skala milimeter
+// yang tercetak di sini seakurat langkah kertas mesin — lebih teliti daripada penggaris plastik.
+// Stripnya satu blok memanjang, sengaja TIDAK ikut tinggi label, jarak potong, atau geser, supaya
+// angkanya murni jarak cetak. Kolom kiri = skala mm; kolom kanan (die-cut saja) = batas label menurut
+// angka yang sekarang diketik. Selisih angka pada dua garis potong kertas yang berurutan = jawaban
+// kolom jarak potong. Kalau garis potong kertas terus jatuh di tanda kolom kanan, setelan sudah pas.
+const KALIBRASI_MM = 125;
+
+function svgPenggaris(k) {
+  const bagian = [];
+  for (let m = 1; m <= KALIBRASI_MM; m++) {
+    const besar = m % 10 === 0;
+    bagian.push(`<line x1='0' y1='${m.toFixed(2)}' x2='${besar ? 8 : m % 5 === 0 ? 5.6 : 3.4}' y2='${m.toFixed(2)}' stroke='#000' stroke-width='${besar ? 0.35 : 0.2}'></line>`);
+    if (besar || m % 5 === 0) {
+      bagian.push(`<text x='9.4' y='${(m + (besar ? 1.1 : 0.9)).toFixed(2)}' font-size='${besar ? 3 : 2.3}' font-family='monospace'>${m}</text>`);
+    }
+  }
+  bagian.unshift(`<line x1='0' y1='0' x2='${PITA_MM}' y2='0' stroke='#000' stroke-width='0.6'></line>`,
+    "<text x='14' y='3.1' font-size='2.6' font-family='monospace'>0 = awal cetak</text>");
+  if (k.potong) {
+    const p = k.pitch;
+    for (let i = 1; i * p <= KALIBRASI_MM; i++) {
+      const y = (i * p).toFixed(2);
+      bagian.push(`<line x1='24' y1='${y}' x2='${PITA_MM}' y2='${y}' stroke='#000' stroke-width='0.7'></line>`);
+    }
+    bagian.push(`<text x='15' y='${(Math.min(p, KALIBRASI_MM) - 1.3).toFixed(2)}' font-size='2.6' font-family='monospace'>setelan ${p} mm</text>`);
+  }
+  return `<svg xmlns='http://www.w3.org/2000/svg' width='${PITA_MM}mm' height='${KALIBRASI_MM + 4}mm' viewBox='0 0 ${PITA_MM} ${KALIBRASI_MM + 4}'>` +
+    bagian.join('') + '</svg>';
+}
+
+function cetakPenggaris() {
+  const k = kertasLabel();
+  const pa = document.getElementById('print-label');
+  // Sengaja tidak ikut preset: penggarisnya satu kolom panjang tanpa tinggi label dan tanpa geser,
+  // supaya angka 0-nya benar-benar mendarat di garis robek.
+  pa.classList.remove('potong');
+  // Selalu selebar pita cetak 44 mm, bukan selebar labelnya: kolom patokan di x 24–44 mm harus
+  // ikut tercetak walaupun label yang dipakai cuma 33 mm. Strip ini alat ukur, bukan label.
+  pa.style.setProperty('--label-w', PITA_MM + 'mm');
+  pa.style.setProperty('--label-h', 'auto');
+  pa.style.setProperty('--label-gap', '0mm');
+  pa.style.setProperty('--label-geser', '0mm');
+  pa.innerHTML = "<div class='label-cetak' style='height:auto; padding:0; border-bottom:0'>" + svgPenggaris(k) + "</div>";
+  pa.style.display = 'block';
+  document.body.classList.add('print-label-mode');
+  cetakStrukThermal();
+  document.body.classList.remove('print-label-mode');
+  pa.style.display = 'none';
+  pa.innerHTML = '';
+}
+
+function bangunLabel(list) {
+  const k = kertasLabel();
+  const pa = document.getElementById('print-label');
+  pa.classList.toggle('potong', k.potong);
+  pa.style.setProperty('--label-w', k.w + 'mm');
+  pa.style.setProperty('--label-h', k.potong ? k.area + 'mm' : 'auto');
+  pa.style.setProperty('--label-gap', k.gap + 'mm');
+  pa.style.setProperty('--label-geser', k.geser + 'mm');
+  pa.innerHTML = list.map(p => "<div class='label-cetak'>" + labelHTML(p, k) + "</div>").join('');
+  pa.style.display = 'block';
+  document.body.classList.add('print-label-mode');
+  // Barcode sudah berupa SVG inline, jadi tidak ada race seperti logo struk yang menunggu gambar.
+  cetakStrukThermal();
+  document.body.classList.remove('print-label-mode');
+  pa.style.display = 'none';
+  pa.innerHTML = '';
+}
+
+function cetakTerpilih() {
+  const k = kertasLabel();
+  const ruang = ruangBarcode(k);
+  const list = [...terpilih.entries()]
+    .map(([id, qty]) => { const p = PRODUK.find(x => x.id === id); return p && p.barcode ? { p: p, qty: qty } : null; })
+    .filter(Boolean);
+  if (!list.length) { alert('Pilih dulu produk yang mau dicetak labelnya.'); return; }
+  // Kode yang tidak muat 2 dot/modul sengaja tidak ikut dicetak: barcode-nya jadi deretan
+  // bar selebar 1 dot yang hampir selalu gagal dibaca scanner, dan label terlanjur terpotong.
+  const layak = [], sempit = [];
+  list.forEach(x => (ukuranBarcode(x.p.barcode, ruang).layak ? layak : sempit).push(x));
+  const semua = [];
+  layak.forEach(x => { for (let i = 0; i < x.qty; i++) semua.push(x.p); });
+  if (sempit.length) {
+    const kap = kapasitasLabel(ruang);
+    const nama = sempit.map(x => `${x.p.name} (${x.p.barcode} = ${ukuranBarcode(x.p.barcode, ruang).modul} modul)`).join('\n- ');
+    alert(`Kode berikut tidak muat di ruang barcode ${ruang.toFixed(1)} mm dengan bar yang andal, jadi tidak ikut dicetak:\n- ` + nama +
+      `\n\nUkuran ini hanya memuat ±${kap.modulMaks} modul ≈ ${kap.angka} angka atau ${kap.huruf} karakter huruf+angka. ` +
+      'Perpendek kodenya di menu Data Produk, pilih label yang lebih lebar, atau kosongkan kolom Lebar barcode.');
+  }
+  if (!semua.length) return;
+  bangunLabel(semua);
+}
+
+inisial();
+</script>
+<%- include('layout-footer') %>

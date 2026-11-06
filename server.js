@@ -455,6 +455,88 @@ app.post('/produk/toggle-status', isManagerOrAdmin, (req, res) => {
     } catch (err) { res.status(500).send(err.message); }
 });
 
+// KATEGORI PRODUK (Admin & Manager Cabang)
+// Dulu isinya cuma dua baris hasil seed di init.js dan tidak pernah ada halamannya,
+// padahal aplikasi ini dipakai untuk jenis usaha apa pun — daftarnya harus bisa
+// tumbuh dari layar, bukan dari migration.
+const bersihkanNamaKategori = (mentah) => String(mentah || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+const bersihkanDeskripsiKategori = (mentah) => String(mentah || '').trim().slice(0, 200);
+const gagalKategori = (res, pesan) => res.redirect('/kategori?err=' + encodeURIComponent(pesan));
+
+app.get('/kategori', isManagerOrAdmin, (req, res) => {
+  const categories = db.prepare(`SELECT c.id, c.name, c.description,
+        (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id) AS product_count,
+        (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id AND COALESCE(p.is_active, 1) = 1) AS active_count
+        FROM categories c ORDER BY c.name COLLATE NOCASE ASC`).all();
+  const pesan = typeof req.query.err === 'string' ? req.query.err.slice(0, 300) : '';
+  const sukses = typeof req.query.ok === 'string' ? req.query.ok.slice(0, 300) : '';
+  // ?terpakai=<id> berarti hapus ditolak; produk yang menahannya ikut dikirim supaya
+  // operator melihat penyebabnya di halaman yang sama, bukan cuma angka.
+  const penahanId = Number(req.query.terpakai) || 0;
+  const penahan = penahanId
+    ? db.prepare(`SELECT p.id, p.barcode, p.name, p.price_sell, COALESCE(p.is_active, 1) AS is_active
+        FROM products p WHERE p.category_id = ? ORDER BY p.name ASC LIMIT 200`).all(penahanId)
+    : [];
+  const penahanJumlah = penahanId
+    ? db.prepare('SELECT COUNT(*) AS n FROM products WHERE category_id = ?').get(penahanId).n
+    : 0;
+  const penahanNama = penahanId ? (db.prepare('SELECT name FROM categories WHERE id = ?').get(penahanId) || {}).name : '';
+  res.render('kategori', { categories, pesan, sukses, penahan, penahanJumlah, penahanNama });
+});
+app.post('/kategori/add', isManagerOrAdmin, (req, res) => {
+  const nama = bersihkanNamaKategori(req.body.name);
+  if (!nama) return gagalKategori(res, 'Nama kategori tidak boleh kosong.');
+  if (db.prepare('SELECT id FROM categories WHERE name = ? COLLATE NOCASE').get(nama)) {
+    return gagalKategori(res, 'Kategori "' + nama + '" sudah ada. Pakai namanya yang sudah ada atau buat nama lain.');
+  }
+  try {
+    db.prepare('INSERT INTO categories (name, description) VALUES (?, ?)').run(nama, bersihkanDeskripsiKategori(req.body.description));
+    res.redirect('/kategori?ok=' + encodeURIComponent('Kategori "' + nama + '" ditambahkan dan langsung muncul di dropdown Data Produk.'));
+  } catch (err) { res.status(500).send(err.message); }
+});
+app.post('/kategori/edit', isManagerOrAdmin, (req, res) => {
+  const id = Number(req.body.id);
+  const lama = db.prepare('SELECT id, name FROM categories WHERE id = ?').get(id);
+  if (!lama) return gagalKategori(res, 'Kategori tidak ditemukan.');
+  const nama = bersihkanNamaKategori(req.body.name);
+  if (!nama) return gagalKategori(res, 'Nama kategori tidak boleh kosong.');
+  if (db.prepare('SELECT id FROM categories WHERE name = ? COLLATE NOCASE AND id <> ?').get(nama, id)) {
+    return gagalKategori(res, 'Nama "' + nama + '" sudah dipakai kategori lain.');
+  }
+  try {
+    db.prepare('UPDATE categories SET name = ?, description = ? WHERE id = ?').run(nama, bersihkanDeskripsiKategori(req.body.description), id);
+    // Produk menyimpan category_id, jadi mengganti nama tidak menyentuh baris produk
+    // sama sekali — label, laporan, dan grid kasir ikut berubah sendiri.
+    res.redirect('/kategori?ok=' + encodeURIComponent('Kategori "' + lama.name + '" diganti menjadi "' + nama + '".'));
+  } catch (err) { res.status(500).send(err.message); }
+});
+app.post('/kategori/delete', isManagerOrAdmin, (req, res) => {
+  const id = Number(req.body.id);
+  const kat = db.prepare('SELECT name FROM categories WHERE id = ?').get(id);
+  if (!kat) return gagalKategori(res, 'Kategori tidak ditemukan.');
+  const dipakai = db.prepare('SELECT COUNT(*) AS n FROM products WHERE category_id = ?').get(id).n;
+  if (dipakai > 0) {
+    return res.redirect('/kategori?terpakai=' + id);
+  }
+  try {
+    db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+    res.redirect('/kategori?ok=' + encodeURIComponent('Kategori "' + kat.name + '" dihapus.'));
+  } catch (err) { res.status(500).send(err.message); }
+});
+
+// CETAK BARCODE (label untuk kemasan yang belum ada barcode-nya)
+app.get('/barcode', isManagerOrAdmin, (req, res) => {
+  // Produk global, bukan per cabang: label ditempel di kemasannya, dan kemasan yang sama
+  // berpindah antar cabang. Hanya produk aktif, supaya label tidak dicetak untuk barang
+  // yang sudah tidak dijual.
+  const products = db.prepare(`SELECT p.id, p.barcode, p.name, p.price_sell, c.name AS category
+      FROM products p
+      LEFT JOIN categories c ON p.category_id = c.id
+      WHERE COALESCE(p.is_active, 1) = 1
+      ORDER BY p.name ASC`).all();
+  res.render('barcode', { products });
+});
+
 // STOK OPNAME (per cabang)
 app.get('/opname', isManagerOrAdmin, (req, res) => {
     const user = req.session.user;

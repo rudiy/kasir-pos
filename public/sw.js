@@ -4,7 +4,7 @@
 // atau server mati kasir tetap melihat halaman terakhir, dan begitu nyala kembali
 // tampilannya langsung ikut versi terbaru tanpa perlu reinstall.
 // Naikkan angka ini tiap kali bentuk aset berubah supaya klien membuang cache lama.
-const STATIC_CACHE = 'kasir-statis-v3';
+const STATIC_CACHE = 'kasir-statis-v4';
 const PAGE_CACHE = 'kasir-halaman-v3';
 // Hanya aset yang URL-nya tetap. style.css di-request dengan ?v=<penanda versi>,
 // jadi ikut ter-cache saat pertama kali diambil, tidak perlu diprecache di sini.
@@ -14,6 +14,7 @@ const SHELL = [
     '/vendor/bootstrap-icons/bootstrap-icons.css',
     '/vendor/bootstrap-icons/fonts/bootstrap-icons.woff2',
     '/vendor/bootstrap-icons/fonts/bootstrap-icons.woff',
+    '/vendor/jsbarcode/JsBarcode.all.min.js',
 ];
 const MAX_PAGES = 40;
 
