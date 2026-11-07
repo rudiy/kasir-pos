@@ -302,6 +302,48 @@ Kodenya di `scripts/impor-produk.js`, rutenya `GET /produk/template` dan `POST /
   Ini perubahan angka yang terlihat: laporan bulan berjalan bisa tampak lebih kecil daripada
   sebelumnya kalau gaji bulan itu baru dibayar bulan berikutnya (dan lebih besar kalau gaji bulan
   lalu diinput sekarang).
+- Kolom nominal tunggal di modal **Input Gaji** sekarang empat isian: **Gaji Pokok, Tunjangan /
+  Lembur, Bonus, Potongan** (`views/penggajian.ejs`). Yang disimpan di `payroll.amount` tetap satu
+  angka, yaitu **yang dibayar = pokok + tunjangan + bonus − potongan**, dihitung server — jadi
+  `/laporan` dan dashboard tidak perlu diaudit ulang dan kolom lama tetap berisi uang yang benar-benar
+  keluar. Kolom per komponennya (`gaji_pokok`, `tunjangan`, `bonus`, `potongan`, `REAL DEFAULT 0`)
+  ditambahkan lewat `ensureColumn` dan baris lama di-backfill `gaji_pokok = amount`, sehingga slip
+  baris lama tetap memperlihatkan rincian (pokoknya = angka yang dulu dibayar).
+  - Isian kosong berarti 0, bukan "belum diisi": bulan yang isinya hanya bonus tetap bisa diinput.
+    `required` sengaja tidak dipasang di gaji pokok supaya operator tidak dihentikan bubble browser
+    saat kasusnya memang tanpa pokok.
+  - Validasi per kolom: nilai yang bukan angka Rp ditolak dengan pesan yang **menyebut kolomnya**
+    (`"abc" di kolom tunjangan bukan angka Rp yang boleh diisi.`), dan total ≤ 0 (mis. potongan
+    1.500.000 vs pokok 1.000.000) ditolak dengan menyebutkan brutonya. Titik ribuan diterima —
+    `Rp 2.000.000` dan `250.000` sama-sama dibaca 2.000.000 / 250.000; tanpa pembersihan itu,
+    `Number('250.000')` menghasilkan 250 dan gaji terpotong seribu kali tanpa pesan apa pun.
+  - Jalan lama tetap hidup: kiriman form versi sebelumnya (satu kolom `amount`) diterima dan angkanya
+    jadi gaji pokok, jadi tidak ada curl/template lama yang tiba-tiba gagal.
+  - Invariant yang dijaga tes: `amount` di semua baris selalu sama dengan jumlah rinciannya
+    (`uji-gaji.js` #58). Slip tidak pernah menampilkan total yang berbeda dengan rincian di atasnya.
+- **Slip gaji** dicetak dari dua tombol di kolom Aksi tiap baris: `58` untuk kertas thermal MP-58X1
+  dan `A4` untuk dialog cetak/PDF. Isinya kop toko (nama, alamat, telepon dari `settings`), nama +
+  posisi karyawan, periode, tanggal bayar, nomor slip, keempat rincian, total terbayar, keterangan,
+  dan dua kotak tanda tangan (penerima & admin).
+  - Datanya (`SLIP`, `TOKO`) dikirim bersama halaman lewat `JSON.stringify(...).replace(/</g,'\\u003c')`
+    sama seperti halaman Cetak Barcode, jadi tombol tetap jalan tanpa koneksi dan angka slip persis
+    angka di tabel. `<` di nama/keterangan tidak bisa menutup tag script — diuji dengan keterangan
+    `<img src=x onerror=alert(1)>`: keluar sebagai teks (`&lt;img`) di slip dan halaman.
+  - Versi 58 mm memakai pita cetak struk yang sama (`--lebar-struk: 44mm`, monospace 10 px) dan
+    `cetakStrukThermal()`; versi A4 (`170mm`, border, tabel 12 px) sengaja memakai `window.print()`
+    biasa supaya "Simpan sebagai PDF" masih bisa dipilih.
+  - Diukur di browser dengan aturan `@media print` disalin ke layar (1 mm = 96/25.4 px), tiga baris
+    gaji terburuk (rincian lengkap + nama akun terhapus + keterangan 82 karakter): thermal **lebar
+    44,00 mm, tepi kanan terjauh 44,00 mm, luber 0,00 mm**, tiap baris uang **3,70 mm = satu baris
+    tidak ada yang melingkar**, tinggi slip 78,8–89,8 mm; A4 **lebar 170,00 mm, tepi kanan terjauh
+    161,73 mm, tinggi 158,1–175,2 mm** (masih satu lembar, area A4 Chrome ±277 mm). Alamat dan
+    keterangan panjang memang boleh melingkar jadi 2–3 baris — tidak ada yang terpotong.
+  - Baris gaji milik akun yang sudah dihapus tetap tercetak lengkap: nama keluar sebagai
+    `akun sudah dihapus`, nominalnya tetap dari kolom `amount`.
+  - Di HP (viewport 390 px) modalnya jadi susun 2×2: tiap isian 166×42 px dengan font 16 px (tidak
+    memperbesar layar), total terbayar dihitung langsung saat mengetik (`Rp 3.450.000`; kalau
+    potongan melebihi bruto angkanya jadi merah `Rp -5.250.000` tapi tetap ditolak server), dan
+    tombol **Kosongkan** menolkan keempat isian.
 
 ## Label barcode
 Barang yang kemasannya tidak punya barcode tetap bisa discan di kasir kalau labelnya dicetak dari
@@ -778,7 +820,8 @@ kasir tetap bisa dipakai lewat alamat LAN, dengan struk QRIS dan harga yang ters
 - Storage: SQLite satu berkas di `database/kasir.db`, mode WAL, foreign key aktif.
 - Migrasi berjalan tiap start: tabel baru dibuat bila belum ada, dan kolom tambahan
   (`sales.subtotal/discount/tax`, `sales.customer_id`, `sales.voucher_id/voucher_code`,
-  `branches.qris_image`, `settings.tax_rate`, `settings.backup_email/backup_hour`, `payroll.period`) ditambahkan lewat
+  `branches.qris_image`, `settings.tax_rate`, `settings.backup_email/backup_hour`,
+  `payroll.period`, `payroll.gaji_pokok/tunjangan/bonus/potongan`) ditambahkan lewat
   `ensureColumn` tanpa merusak data lama.
 - Sumber kebenaran stok adalah `stock_per_branch`, **bukan** `products.stock`. Setiap
   perubahan stok (penjualan, opname, koreksi, transfer) tercatat di `stock_movements`,

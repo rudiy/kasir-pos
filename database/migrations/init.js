@@ -200,6 +200,18 @@ const initDB = () => {
     }
   }
 
+  // Rincian gaji untuk slip. `amount` TETAP jumlah yang dibayar dan tetap kolom yang
+  // dijumlahkan laporan serta dashboard, jadi rincian baru ini menjelaskan angka itu,
+  // bukan menggantikannya — tidak ada laporan yang harus ditinjau ulang.
+  ensureColumn('payroll', 'gaji_pokok', 'REAL DEFAULT 0');
+  ensureColumn('payroll', 'tunjangan', 'REAL DEFAULT 0');
+  ensureColumn('payroll', 'bonus', 'REAL DEFAULT 0');
+  ensureColumn('payroll', 'potongan', 'REAL DEFAULT 0');
+  // Baris lama cuma punya satu angka, dan angka itu gaji pokoknya — bukan nol. `DEFAULT 0`
+  // di atas membuat kolom barunya terisi 0 untuk semua baris lama, jadi pembedanya adalah
+  // "pokok masih 0 sementara amount sudah ada".
+  db.prepare('UPDATE payroll SET gaji_pokok = amount WHERE gaji_pokok = 0 AND amount > 0').run();
+
   const checkBranch = db.prepare('SELECT * FROM branches WHERE id = 1').get();
   if(!checkBranch) {
     db.prepare('INSERT INTO branches (code, name, address, phone, pic_name, is_active) VALUES (?, ?, ?, ?, ?, ?)').run('CBG-001', 'Cabang Pusat', 'Jl. Jenderal Sudirman No. 1', '08123456789', 'Super Admin', 1);

@@ -876,9 +876,12 @@ app.post('/pengeluaran/delete', isManagerOrAdmin, (req, res) => {
 // PENGGAJIAN (Admin Only)
 app.get('/penggajian', isAdmin, (req, res) => {
     const users = db.prepare('SELECT id, name, role FROM users').all();
-    const payrolls = db.prepare('SELECT p.*, u.name as user_name FROM payroll p LEFT JOIN users u ON p.user_id = u.id ORDER BY p.id DESC').all();
+    // Nama kasir ikut diambil lewat LEFT JOIN karena akun bisa dihapus sementara baris gaji
+    //nya harus tetap terbaca; user_role dipakai slip, dan settings untuk kop slip.
+    const payrolls = db.prepare('SELECT p.*, u.name as user_name, u.role as user_role FROM payroll p LEFT JOIN users u ON p.user_id = u.id ORDER BY p.id DESC').all();
+    const settings = db.prepare('SELECT store_name, address, phone FROM settings LIMIT 1').get();
     const bulanIni = todayWIB().slice(0, 7);
-    res.render('penggajian', { users, payrolls, bulanIni, namaBulan: NAMA_BULAN, error: req.query.error || '' });
+    res.render('penggajian', { users, payrolls, settings, bulanIni, namaBulan: NAMA_BULAN, error: req.query.error || '' });
 });
 app.post('/penggajian/add', isAdmin, (req, res) => {
     const salah = (pesan) => res.redirect('/penggajian?error=' + encodeURIComponent(pesan));
@@ -894,13 +897,47 @@ app.post('/penggajian/add', isAdmin, (req, res) => {
         // masuk diam-diam dan tabel gaji menampilkan nama kosong.
         const karyawan = db.prepare('SELECT id FROM users WHERE id = ?').get(req.body.user_id);
         if (!karyawan) return salah('Karyawan tidak ada di daftar. Pilih namanya, jangan kirim sendiri.');
-        const nominal = Number(req.body.amount);
-        if (!Number.isFinite(nominal) || nominal <= 0) {
-            return salah('Nominal gaji harus angka lebih dari 0, bukan "' + req.body.amount + '".');
+
+        // Rincian gaji. Kolom kosong berarti 0, bukan "belum diisi": yang wajib hanya jumlahnya
+        // (terbayar > 0), jadi bulan yang hanya berisi bonus tetap bisa diinput. Negatif ditolak —
+        // potongan punya kolomnya sendiri, jadi "-50000" di kolom bonus hanya membuat slip
+        // sulit dibaca.
+        const kolom = ['gaji_pokok', 'tunjangan', 'bonus', 'potongan'];
+        const rincian = [];
+        for (const nama of kolom) {
+            const teks = String(req.body[nama] === undefined || req.body[nama] === null ? '' : req.body[nama]).trim();
+            if (teks === '') { rincian.push(0); continue; }
+            // "2.000.000" adalah cara operator menulis rupiah, jadi pola titik-ribuan
+            // (dengan atau tanpa "Rp") dibersihkan dulu. Selain itu Number() dipakai apa adanya,
+            // sehingga "1500.50" tetap 1500,5 dan bukan tergeser seratus kali.
+            const polos = /^(?:Rp\s*)?\d{1,3}(?:\.\d{3})+$/i.test(teks) ? teks.replace(/^Rp\s*/i, '').replace(/\./g, '') : teks.replace(/^Rp\s*/i, '');
+            const n = Number(polos);
+            if (polos.trim() === '' || !Number.isFinite(n) || n < 0) {
+                return salah('"' + teks + '" di kolom ' + nama.replace('_', ' ') + ' bukan angka Rp yang boleh diisi.');
+            }
+            // Rupiah utuh: slip dan tabel tidak pernah memperlihatkan "Rp 1.500.000,5".
+            rincian.push(Math.round(n));
+        }
+        const [pokok, tunjangan, bonus, potongan] = rincian;
+        let terbayar = pokok + tunjangan + bonus - potongan;
+        const lama = String(req.body.amount === undefined || req.body.amount === null ? '' : req.body.amount).trim();
+        if (pokok + tunjangan + bonus + potongan === 0 && lama !== '') {
+            // Jalan lama (form versi sebelumnya, atau kiriman manual): satu angka = gaji pokok.
+            const n = Number(lama);
+            if (!Number.isFinite(n) || n <= 0) {
+                return salah('Nominal gaji harus angka lebih dari 0, bukan "' + lama + '".');
+            }
+            rincian[0] = Math.round(n);
+            terbayar = rincian[0];
+        }
+        if (terbayar <= 0) {
+            return salah('Yang dibayar harus lebih dari 0. Pokok + tunjangan + bonus sekarang ' +
+                (pokok + tunjangan + bonus) + ', potongan ' + potongan + '.');
         }
         const periode = NAMA_BULAN[Number(m[2]) - 1] + ' ' + m[1];
-        db.prepare('INSERT INTO payroll (user_id, amount, month_year, period, notes) VALUES (?, ?, ?, ?, ?)')
-            .run(karyawan.id, Math.round(nominal), periode, m[1] + '-' + m[2], req.body.notes);
+        db.prepare('INSERT INTO payroll (user_id, amount, month_year, period, gaji_pokok, tunjangan, bonus, potongan, notes) '
+            + 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .run(karyawan.id, terbayar, periode, m[1] + '-' + m[2], ...rincian, req.body.notes);
         res.redirect('/penggajian');
     } catch (err) { res.status(500).send(err.message); }
 });

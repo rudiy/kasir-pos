@@ -10,16 +10,24 @@
   <div class='card shadow-sm'>
     <div class='card-body table-responsive'>
       <table class='table table-hover align-middle'>
-        <thead class='table-light'><tr><th>Tgl Bayar</th><th>Nama Karyawan</th><th>Periode / Bulan</th><th>Jumlah Gaji</th><th>Keterangan</th><th class='text-center'>Aksi</th></tr></thead>
+        <thead class='table-light'><tr><th>Tgl Bayar</th><th>Nama Karyawan</th><th>Periode / Bulan</th><th>Terbayar</th><th>Keterangan</th><th class='text-center'>Aksi</th></tr></thead>
         <tbody>
           <% if(payrolls.length > 0) { payrolls.forEach(p => { %>
             <tr>
               <td><%= fmtWIB(p.date, false) %></td>
-              <td><strong><%= p.user_name %></strong></td>
+              <td><strong><%= p.user_name || 'akun sudah dihapus' %></strong></td>
               <td><span class='badge bg-info text-dark'><%= p.month_year %></span></td>
-              <td class='text-success fw-bold'>Rp <%= p.amount.toLocaleString('id-ID') %></td>
+              <td class='text-success fw-bold'>Rp <%= p.amount.toLocaleString('id-ID') %>
+                <% if (p.gaji_pokok || p.tunjangan || p.bonus || p.potongan) { %>
+                  <div class='small text-muted fw-normal'>
+                    Pokok <%= (p.gaji_pokok || 0).toLocaleString('id-ID') %><% if (p.tunjangan) { %> · Tunjangan <%= p.tunjangan.toLocaleString('id-ID') %><% } %><% if (p.bonus) { %> · Bonus <%= p.bonus.toLocaleString('id-ID') %><% } %><% if (p.potongan) { %> · <span class='text-danger'>- <%= p.potongan.toLocaleString('id-ID') %></span><% } %>
+                  </div>
+                <% } %>
+              </td>
               <td><%= p.notes || '-' %></td>
-              <td class='text-center'>
+              <td class='text-center text-nowrap'>
+                <button type='button' class='btn btn-sm btn-outline-secondary' onclick='cetakSlip(<%= p.id %>, true)' title='Cetak slip di kertas 58 mm'><i class='bi bi-printer'></i> 58</button>
+                <button type='button' class='btn btn-sm btn-outline-secondary' onclick='cetakSlip(<%= p.id %>, false)' title='Cetak / simpan slip A4 sebagai PDF'><i class='bi bi-file-earmark-pdf'></i> A4</button>
                 <form action='/penggajian/delete' method='POST' class='d-inline' onsubmit='return confirm("Hapus data gaji ini?")'>
                   <input type='hidden' name='id' value='<%= p.id %>'>
                   <button type='submit' class='btn btn-sm btn-danger'><i class='bi bi-trash'></i></button>
@@ -60,13 +68,162 @@
             </div>
           </div>
         </div>
-        <div class='mb-2'><label>Nominal Gaji (Rp)</label><input type='number' name='amount' class='form-control' required placeholder='0'></div>
-        <div class='mb-2'><label>Keterangan / Bonus</label><textarea name='notes' class='form-control' rows='2'></textarea></div>
+        <div class='row g-2 mb-1'>
+          <div class='col-6'><label class='form-label'>Gaji Pokok (Rp)</label>
+            <input type='number' name='gaji_pokok' id='fPokok' class='form-control' min='0' step='1' placeholder='0'></div>
+          <div class='col-6'><label class='form-label'>Tunjangan / Lembur</label>
+            <input type='number' name='tunjangan' id='fTunjangan' class='form-control' min='0' step='1' placeholder='0'></div>
+          <div class='col-6'><label class='form-label'>Bonus</label>
+            <input type='number' name='bonus' id='fBonus' class='form-control' min='0' step='1' placeholder='0'></div>
+          <div class='col-6'><label class='form-label'>Potongan</label>
+            <input type='number' name='potongan' id='fPotongan' class='form-control' min='0' step='1' placeholder='0'></div>
+        </div>
+        <div class='d-flex justify-content-between align-items-center border-top pt-2 mb-2'>
+          <div>
+            <div class='small text-muted'>Yang dibayar (pokok + tunjangan + bonus &minus; potongan)</div>
+            <div class='fw-bold text-success' id='slipTotal'>Rp 0</div>
+          </div>
+          <button type='button' class='btn btn-sm btn-outline-secondary' onclick='isiUlang(0)' tabindex='-1'>Kosongkan</button>
+        </div>
+        <div class='mb-2'><label class='form-label' for='notes'>Keterangan / Bonus</label><textarea name='notes' id='notes' class='form-control' rows='2'></textarea></div>
       </div>
       <div class='modal-footer'><button type='submit' class='btn btn-primary'>Simpan Gaji</button></div>
     </form>
   </div>
 </div>
+<div id='print-slip' style='display:none;'></div>
+<script>
+// Data slip dikirim bersama halamannya, bukan diambil lewat fetch: tombol cetak harus tetap
+// jalan saat server mati (mis. sesudah jam operasional) dan angka yang tercetak persis sama
+// dengan yang di tabel. < di-escape supaya nama/keterangan tidak bisa menutup tag script.
+const SLIP = <%- JSON.stringify(payrolls.map(p => ({
+  id: p.id,
+  nama: p.user_name || '',
+  posisi: p.user_role || '',
+  periode: p.month_year,
+  bayar: fmtWIB(p.date, false),
+  pokok: p.gaji_pokok || 0,
+  tunjangan: p.tunjangan || 0,
+  bonus: p.bonus || 0,
+  potongan: p.potongan || 0,
+  terbayar: p.amount,
+  catatan: p.notes || ''
+}))).replace(/</g, '\\u003c') %>;
+const TOKO = <%- JSON.stringify(settings || {}).replace(/</g, '\\u003c') %>;
+
+const escSlip = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const rpSlip = n => 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID');
+
+function barisSlip(label, nilai, tebal) {
+  const n = Math.round(Number(nilai) || 0);
+  // Tanda minus ASCII saja: head thermal 58 mm hanya menjamin karakter dasar, dan baris ini
+  // ikut dibaca manusia di atas kertas struk.
+  return "<div class='slip-baris" + (tebal ? ' tebal' : '') + "'><span>" + escSlip(label) + "</span><span>" +
+    (n < 0 ? '- ' : '') + rpSlip(Math.abs(n)) + "</span></div>";
+}
+function metaSlip(label, nilai) {
+  return "<div class='slip-meta'><span>" + escSlip(label) + "</span><span>" + escSlip(nilai || '-') + "</span></div>";
+}
+function rincianSlip(d) {
+  return [
+    { label: 'Gaji Pokok', pendek: 'Pokok', nilai: d.pokok },
+    { label: 'Tunjangan / Lembur', pendek: 'Tunjangan', nilai: d.tunjangan },
+    { label: 'Bonus', pendek: 'Bonus', nilai: d.bonus },
+    { label: 'Potongan', pendek: 'Potongan', nilai: d.potongan, potong: true }
+  ];
+}
+// Satu sumber baris rincian untuk kedua format. Thermal pakai label pendek karena pita
+// 44 mm hanya memuat ±27 karakter; A4 punya ruang untuk nama lengkapnya.
+function barisRincian(x, thermal) {
+  if (thermal) return barisSlip(x.pendek, x.potong ? -x.nilai : x.nilai);
+  return "<tr" + (x.potong ? " class='hapus'" : '') + "><td>" + escSlip(x.label) + "</td><td class='kanan'>" +
+    (x.potong ? '(' + rpSlip(x.nilai) + ')' : rpSlip(x.nilai)) + "</td></tr>";
+}
+
+function ttdKotak(jabatan, nama) {
+  return "<div><div>" + escSlip(jabatan) + "</div><div class='ttd-ruang'></div><div>(" +
+    escSlip(nama || '________') + ")</div></div>";
+}
+
+function slipHTML(d, thermal) {
+  const alamat = [TOKO.address, TOKO.phone].filter(Boolean).join(' · ');
+  const namaToko = TOKO.store_name || 'KASIR POS';
+  const isi = rincianSlip(d);
+  const meta = [
+    metaSlip('Karyawan', d.nama || 'akun sudah dihapus'),
+    metaSlip('Posisi', d.posisi),
+    metaSlip('Periode', d.periode),
+    metaSlip('Tgl. Bayar', d.bayar),
+    metaSlip('No. Slip', '#' + d.id)
+  ].join('');
+  const ttd = "<div class='slip-ttd'>" + (thermal
+    ? ttdKotak('Penerima', d.nama) + ttdKotak('Admin', '')
+    : ttdKotak('Menyetujui,', 'Pemilik / Admin') + ttdKotak('Yang menerima,', d.nama)) + "</div>";
+  // Thermal: pita 44 mm, ±27 karakter per baris, jadi total ditulis "TOTAL" saja.
+  if (thermal) {
+    return "<div class='slip-toko'>" + escSlip(namaToko) + "</div>" +
+      (alamat ? "<div class='slip-kecil slip-alamat'>" + escSlip(alamat) + "</div>" : '') +
+      "<div class='slip-garis'></div><div class='slip-judul'>SLIP GAJI</div>" +
+      "<div class='slip-garis'></div>" + meta +
+      "<div class='slip-garis'></div>" + isi.map(x => barisRincian(x, true)).join('') +
+      "<div class='slip-garis'></div>" + barisSlip('TOTAL', d.terbayar, true) +
+      (d.catatan ? "<div class='slip-kecil slip-catatan'>" + escSlip(d.catatan) + "</div>" : '') +
+      "<div class='slip-garis'></div>" + ttd;
+  }
+  return "<div class='slip-kop'><div class='slip-toko'>" + escSlip(namaToko) + "</div>" +
+    (alamat ? "<div class='slip-kecil'>" + escSlip(alamat) + "</div>" : '') + "</div>" +
+    "<div class='slip-judul'>SLIP GAJI KARYAWAN</div>" +
+    "<div class='slip-meta-kol'>" + meta + "</div>" +
+    "<table class='slip-tabel'><thead><tr><th>Rincian</th><th class='kanan'>Jumlah</th></tr></thead><tbody>" +
+    isi.map(x => barisRincian(x, false)).join('') +
+    "<tr class='total'><td>TOTAL TERBAYAR</td><td class='kanan'>" + rpSlip(d.terbayar) + "</td></tr>" +
+    "</tbody></table>" +
+    (d.catatan ? "<div class='slip-catatan'><strong>Keterangan</strong><br>" + escSlip(d.catatan) + "</div>" : '') +
+    ttd;
+}
+
+function cetakSlip(id, thermal) {
+  const d = SLIP.find(x => x.id === id);
+  if (!d) { alert('Data gaji ini tidak ada di halaman. Muat ulang halaman Penggajian lalu coba lagi.'); return; }
+  const pa = document.getElementById('print-slip');
+  pa.className = thermal ? 'thermal' : 'a4';
+  pa.innerHTML = slipHTML(d, thermal);
+  pa.style.display = 'block';
+  document.body.classList.add('print-slip-mode');
+  try {
+    // 58 mm harus memaksa @page selebar kertas (alasan yang sama dengan struk kasir);
+    // versi A4 dibiarkan memakai pengaturan halaman dialog cetak supaya bisa "Simpan sebagai PDF".
+    if (thermal) cetakStrukThermal(); else window.print();
+  } finally {
+    document.body.classList.remove('print-slip-mode');
+    pa.style.display = 'none';
+    pa.innerHTML = '';
+  }
+}
+
+// Total di modal mengikuti angka yang sebenarnya dihitung server (pokok + tunjangan + bonus
+// - potongan), jadi operator melihat jumlah yang sama dengan yang akan tercetak di slip.
+const BIDANG_SLIP = ['fPokok', 'fTunjangan', 'fBonus', 'fPotongan'];
+const angkaBidangSlip = id => {
+  const v = parseFloat(document.getElementById(id).value);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+};
+function gambarTotalSlip() {
+  const total = angkaBidangSlip('fPokok') + angkaBidangSlip('fTunjangan') + angkaBidangSlip('fBonus') - angkaBidangSlip('fPotongan');
+  const kotak = document.getElementById('slipTotal');
+  kotak.textContent = rpSlip(total);
+  // Keduanya ditulis ulang, bukan hanya text-danger yang ditambahkan: kalau dua class warna
+  // tertinggal di satu elemen, warna yang menang tergantung urutan file bootstrap.css.
+  kotak.classList.toggle('text-danger', total < 0);
+  kotak.classList.toggle('text-success', total >= 0);
+}
+function isiUlang(n) {
+  BIDANG_SLIP.forEach(id => { document.getElementById(id).value = n; });
+  gambarTotalSlip();
+}
+BIDANG_SLIP.forEach(id => document.getElementById(id).addEventListener('input', gambarTotalSlip));
+gambarTotalSlip();
+</script>
 <script>
 (function () {
   const el = document.getElementById('month_year');
