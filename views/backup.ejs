@@ -1,0 +1,126 @@
+<%- include('layout-header') %>
+<div class='p-4'>
+  <h2><i class='bi bi-database-down me-2'></i>Cadangan &amp; Data</h2>
+
+  <% if (error) { %><div class='alert alert-danger mt-3'><%= error %></div><% } %>
+  <% if (info) { %><div class='alert alert-success mt-3'><%= info %></div><% } %>
+
+  <div class='row mt-3 g-3'>
+    <div class='col-lg-7'>
+      <div class='card shadow-sm h-100'>
+        <div class='card-header bg-white fw-bold'><i class='bi bi-file-earmark-zip'></i> Cadangan lengkap (satu berkas)</div>
+        <div class='card-body'>
+          <p class='mb-3'>
+            Satu tombol menghasilkan berkas ZIP berisi seluruh data toko: database
+            (transaksi, produk, stok semua cabang, cabang, pengguna, voucher, pengeluaran, penggajian,
+            pengaturan), logo dan gambar QRIS di folder uploads, plus ekspor CSV supaya bisa
+            dibuka langsung di Excel.
+          </p>
+          <ul class='small text-muted mb-3'>
+            <li>Database di dalamnya adalah salinan hasil checkpoint yang sudah lolos pemeriksaan integritas.</li>
+            <li>Berkas <code>.env</code> sengaja tidak ikut, supaya rahasia tidak tersebar lewat berkas cadangan.</li>
+            <li>Isi ZIP meniru struktur folder aplikasi; cara memulihkannya tertulis di <code>BACA-DULU.txt</code>.</li>
+          </ul>
+          <form action='/backup/unduh-zip' method='POST' class='d-flex gap-2 align-items-center'>
+            <button type='submit' class='btn btn-primary' style='background-color: var(--navy);'>
+              <i class='bi bi-download me-1'></i> Buat &amp; unduh cadangan
+            </button>
+            <span class='small text-muted'>Uploads: <%= jumlahUpload %> berkas, <%= ukuranUpload %></span>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class='col-lg-5'>
+      <div class='card shadow-sm h-100'>
+        <div class='card-header bg-white fw-bold'><i class='bi bi-filetype-csv'></i> Ekspor CSV per laporan</div>
+        <div class='card-body'>
+          <div class='list-group list-group-flush'>
+            <% [ ['transaksi','Transaksi penjualan','sales'], ['produk','Semua produk','products'], ['stok','Stok per cabang','stock_per_branch'], ['cabang','Semua cabang','branches'] ].forEach(([k, label, tabel]) => { %>
+              <a href='/backup/ekspor/<%= k %>' class='list-group-item list-group-item-action d-flex justify-content-between align-items-center'>
+                <span><i class='bi bi-download me-2'></i><%= label %></span>
+                <span class='badge bg-secondary'><%= jumlah[tabel] %> baris</span>
+              </a>
+            <% }) %>
+          </div>
+          <div class='small text-muted mt-2'>
+            Pakai titik-koma sebagai pemisah dan bersandi UTF-8, jadi langsung terbaca rapi di
+            Excel dengan setelan Indonesia. Nilai yang diawali = atau + diberi tanda petik agar
+            tidak dijalankan Excel sebagai rumus.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class='card shadow-sm mt-3'>
+    <div class='card-header bg-white fw-bold'><i class='bi bi-clock-history'></i> Berkas cadangan otomatis di server ini</div>
+    <div class='card-body table-responsive'>
+      <table class='table table-hover align-middle mb-0'>
+        <thead class='table-light'><tr><th>Berkas</th><th>WIB</th><th class='text-end'>Ukuran</th><th class='text-center'>Unduh</th></tr></thead>
+        <tbody>
+          <% if (berkas.length > 0) { berkas.forEach(b => { %>
+            <tr>
+              <td><code><%= b.nama %></code></td>
+              <td><%= b.waktu %></td>
+              <td class='text-end'><%= b.ukuran %></td>
+              <td class='text-center'><a href='/backup/berkas/<%= b.nama %>' class='btn btn-sm btn-outline-primary'><i class='bi bi-download'></i></a></td>
+            </tr>
+          <% }) } else { %>
+            <tr><td colspan='4' class='text-center'>Belum ada berkas cadangan. Cadangan dibuat otomatis beberapa menit setelah server menyala.</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+      <div class='small text-muted mt-2'>
+        Hanya cadangan database, tanpa gambar logo/QRIS, dan hanya <%= retensi %> berkas terbaru yang disimpan.
+        Untuk memindahkan seluruh data ke server lain, pakai tombol cadangan lengkap di atas.
+      </div>
+    </div>
+  </div>
+
+  <% const labelTabel = { sales: 'Nota penjualan', sale_items: 'Baris nota', products: 'Produk',
+      stock_per_branch: 'Stok per cabang', stock_movements: 'Jurnal stok', branches: 'Cabang',
+      users: 'Akun', categories: 'Kategori', customers: 'Pelanggan', vouchers: 'Voucher',
+      expenses: 'Pengeluaran', stock_opnames: 'Stok opname', payroll: 'Penggajian' } %>
+  <div class='card shadow-sm mt-3'>
+    <div class='card-header bg-white fw-bold'><i class='bi bi-table'></i> Isi database saat ini</div>
+    <div class='card-body'>
+      <div class='d-flex flex-wrap gap-2'>
+        <% Object.keys(jumlah).forEach(t => { %>
+          <span class='badge bg-light text-dark border'><%= labelTabel[t] || t %>: <%= jumlah[t] %></span>
+        <% }) %>
+      </div>
+      <div class='small text-muted mt-2'>
+        Semua angka di atas ikut terbawa di dalam berkas cadangan, kecuali logo dan gambar QRIS yang
+        tersimpan sebagai berkas di folder <code>public/uploads</code> (<%= jumlahUpload %> berkas,
+        <%= ukuranUpload %>) — itu juga ikut ke dalam ZIP.
+      </div>
+    </div>
+  </div>
+
+  <div class='card shadow-sm mt-3'>
+    <div class='card-header bg-white fw-bold'><i class='bi bi-shield-exclamation'></i> Aksi penghapusan data terakhir</div>
+    <div class='card-body table-responsive'>
+      <table class='table table-hover align-middle mb-0'>
+        <thead class='table-light'><tr><th>Waktu (WIB)</th><th>Pelaksana</th><th>Aksi</th><th class='text-end'>Baris dihapus</th><th>Cadangan sebelum hapus</th></tr></thead>
+        <tbody>
+          <% if (aksi.length > 0) { aksi.forEach(a => { %>
+            <tr>
+              <td><%= fmtWIB(a.created_at) %></td>
+              <td><%= a.pelaksana || '-' %></td>
+              <td><span class='badge bg-danger'><%= a.aksi %></span><div class='small text-muted'><%= a.keterangan || '' %></div></td>
+              <td class='text-end'><%= a.baris_terhapus %></td>
+              <td><code><%= a.backup_file || '-' %></code></td>
+            </tr>
+          <% }) } else { %>
+            <tr><td colspan='5' class='text-center'>Belum pernah ada penghapusan data besar.</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+      <div class='small text-muted mt-2'>
+        Riwayat ini tidak ikut terhapus oleh aksi mana pun, termasuk reset ke kondisi awal.
+      </div>
+    </div>
+  </div>
+</div>
+<%- include('layout-footer') %>

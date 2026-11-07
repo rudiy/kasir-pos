@@ -28,88 +28,96 @@
 
   <div class='card shadow-sm mb-3'>
     <div class='card-body'>
-      <div class='small fw-bold mb-2'>Kertas label</div>
-      <div class='row g-2 align-items-end'>
-        <div class='col-md-4'>
-          <label class='form-label small mb-1' for='preset'>Ukuran</label>
-          <select id='preset' class='form-select form-select-sm'>
-            <option value='roll'>Roll 58 mm — tanpa potong (label memanjang)</option>
-            <option value='50x30'>Die-cut 50 × 30 mm</option>
-            <option value='43x25'>Die-cut 43 × 25 mm</option>
-            <option value='33x15'>Die-cut 33 × 15 mm</option>
-            <option value='custom'>Ukuran sendiri…</option>
-          </select>
-        </div>
-        <div class='col-md-4'>
-          <div class='row g-1' id='kotakUkuran'>
-            <div class='col-6'>
-              <label class='form-label small mb-1' for='labW'>Lebar (mm)</label>
-              <input id='labW' class='form-control form-control-sm' type='number' min='20' max='58' step='0.5' value='50'>
+      <div class='row g-3'>
+        <div class='col-12 col-xl-7'>
+          <div class='small fw-bold mb-2'>Kertas label</div>
+          <div class='row g-2 align-items-end'>
+            <div class='col-12 col-sm-6'>
+              <label class='form-label small mb-1' for='preset'>Ukuran</label>
+              <select id='preset' class='form-select form-select-sm'>
+                <option value='roll'>Roll 58 mm — tanpa potong (label memanjang)</option>
+                <option value='50x30'>Die-cut 50 × 30 mm</option>
+                <option value='43x25'>Die-cut 43 × 25 mm</option>
+                <option value='33x15'>Die-cut 33 × 15 mm</option>
+                <option value='custom'>Ukuran sendiri…</option>
+              </select>
             </div>
-            <div class='col-6'>
-              <label class='form-label small mb-1' for='labH'>Tinggi (mm)</label>
-              <input id='labH' class='form-control form-control-sm' type='number' min='12' max='80' step='0.5' value='30'>
+            <div class='col-12 col-sm-6' id='kolomUkuran'>
+              <div class='row g-1' id='kotakUkuran'>
+                <div class='col-6'>
+                  <label class='form-label small mb-1' for='labW'>Lebar (mm)</label>
+                  <input id='labW' class='form-control form-control-sm' type='number' min='20' max='58' step='0.5' value='50'>
+                </div>
+                <div class='col-6'>
+                  <label class='form-label small mb-1' for='labH'>Tinggi (mm)</label>
+                  <input id='labH' class='form-control form-control-sm' type='number' min='12' max='80' step='0.5' value='30'>
+                </div>
+              </div>
+            </div>
+            <div class='col-12 col-sm-6'>
+              <label class='form-label small mb-1' for='geser'>Geser turun (mm)</label>
+              <div class='input-group input-group-sm'>
+                <input id='geser' class='form-control' type='number' min='-15' max='30' step='0.5' value='0'>
+                <span class='input-group-text'>mm</span>
+              </div>
+            </div>
+            <div class='col-12 col-sm-6'>
+              <label class='form-label small mb-1' for='labGap'><span id='labGapJudul'>Jarak antar garis potong (mm)</span></label>
+              <div class='input-group input-group-sm'>
+                <input id='labGap' class='form-control' type='number' min='10' max='90' step='0.5' value='32'>
+                <span class='input-group-text'>mm</span>
+              </div>
             </div>
           </div>
-        </div>
-        <div class='col-md-4'>
-          <label class='form-label small mb-1' for='geser'>Geser turun (mm)</label>
-          <div class='input-group input-group-sm'>
-            <input id='geser' class='form-control' type='number' min='-15' max='30' step='0.5' value='0'>
-            <span class='input-group-text'>mm</span>
+          <div class='small fw-bold mt-3 mb-2'>Ukuran barcode</div>
+          <div class='row g-2 align-items-end'>
+            <div class='col-12 col-sm-6'>
+              <label class='form-label small mb-1' for='barT'>Tinggi barcode (mm)</label>
+              <div class='input-group input-group-sm'>
+                <input id='barT' class='form-control' type='number' min='4' max='24' step='0.5' placeholder='otomatis'>
+                <span class='input-group-text'>mm</span>
+              </div>
+            </div>
+            <div class='col-12 col-sm-6'>
+              <label class='form-label small mb-1' for='barL'>Lebar barcode (mm)</label>
+              <div class='input-group input-group-sm'>
+                <input id='barL' class='form-control' type='number' min='8' max='44' step='0.5' placeholder='otomatis'>
+                <span class='input-group-text'>mm</span>
+              </div>
+            </div>
+            <div class='col-12 d-flex flex-wrap gap-2'>
+              <button id='btnPenggaris' class='btn btn-sm btn-outline-secondary' type='button' onclick='cetakPenggaris()'
+                title='Cetak strip berskala milimeter. Garis potong kertas yang membelah skala langsung menunjukkan angkanya — tanpa penggaris.'>
+                <i class='bi bi-rulers me-1'></i>Cetak penggaris, biar saya baca angkanya
+              </button>
+              <button class='btn btn-sm btn-outline-secondary' type='button' onclick='barcodeOtomatis()'>
+                Pakai ukuran otomatis
+              </button>
+            </div>
+            <div class='col-12 form-text' id='maknaJarak'></div>
           </div>
         </div>
-        <div class='col-md-4'>
-          <label class='form-label small mb-1' for='labGap'><span id='labGapJudul'>Jarak antar garis potong (mm)</span></label>
-          <div class='input-group input-group-sm'>
-            <input id='labGap' class='form-control' type='number' min='10' max='90' step='0.5' value='32'>
-            <span class='input-group-text'>mm</span>
-          </div>
-          <button id='btnPenggaris' class='btn btn-sm btn-outline-secondary mt-1' type='button' onclick='cetakPenggaris()'
-            title='Cetak strip berskala milimeter. Garis potong kertas yang membelah skala langsung menunjukkan angkanya — tanpa penggaris.'>
-            <i class='bi bi-rulers me-1'></i>Cetak penggaris, biar saya baca angkanya
-          </button>
-          <div class='form-text' id='maknaJarak'></div>
+        <div class='col-12 col-xl-5'>
+          <div class='small fw-bold mb-2'>Penjelasan ukuran</div>
+          <div id='infoKertas' class='small text-muted'></div>
+          <div id='infoBarcode' class='small text-muted mt-2'></div>
         </div>
       </div>
-      <div class='row g-2 align-items-end mt-1'>
-        <div class='col-md-4'>
-          <label class='form-label small mb-1' for='barT'>Tinggi barcode (mm)</label>
-          <div class='input-group input-group-sm'>
-            <input id='barT' class='form-control' type='number' min='4' max='24' step='0.5' placeholder='otomatis'>
-            <span class='input-group-text'>mm</span>
-          </div>
-        </div>
-        <div class='col-md-4'>
-          <label class='form-label small mb-1' for='barL'>Lebar barcode (mm)</label>
-          <div class='input-group input-group-sm'>
-            <input id='barL' class='form-control' type='number' min='8' max='44' step='0.5' placeholder='otomatis'>
-            <span class='input-group-text'>mm</span>
-          </div>
-        </div>
-        <div class='col-md-4'>
-          <button class='btn btn-sm btn-outline-secondary' type='button' onclick='barcodeOtomatis()'>
-            Pakai ukuran otomatis
-          </button>
-        </div>
-      </div>
-      <div id='infoKertas' class='small text-muted mt-2'></div>
-      <div id='infoBarcode' class='small text-muted'></div>
     </div>
   </div>
 
   <div class='card shadow-sm mb-3'>
     <div class='card-body'>
       <div class='row g-2 align-items-end'>
-        <div class='col-md-5'>
+        <div class='col-12 col-md-6 col-lg-5'>
           <label class='form-label small mb-1' for='q'>Cari produk</label>
           <input id='q' class='form-control form-control-sm' type='search' placeholder='nama, kategori, atau kode barcode'>
         </div>
-        <div class='col-md-4'>
+        <div class='col-12 col-md-6 col-lg-4'>
           <label class='form-label small mb-1' for='kat'>Kategori</label>
           <select id='kat' class='form-select form-select-sm'></select>
         </div>
-        <div class='col-md-3'>
+        <div class='col-12 col-lg-3'>
           <div class='form-check mb-2'>
             <input class='form-check-input' type='checkbox' id='hanyaTerpilih'>
             <label class='form-check-label small' for='hanyaTerpilih'>Tampilkan yang terpilih saja</label>
@@ -182,7 +190,7 @@ function inisial() {
 
 function pasangKontrolKertas() {
   const preset = document.getElementById('preset');
-  const kolomUkuran = document.getElementById('kotakUkuran').closest('.col-md-4');
+  const kolomUkuran = document.getElementById('kolomUkuran');
   let presetTerakhir = null;
   const terapkan = () => {
     const p = PRESET[preset.value];

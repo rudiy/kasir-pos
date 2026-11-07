@@ -41,6 +41,7 @@
                 <% if (totalPajak > 0) { %>
                 <div class='small text-muted mt-1' title='Omset dikurangi pajak yang dipungut dari pelanggan pada periode ini — angka itu harus disetor, bukan pendapatan toko.'>Omset Bersih Pajak <strong>Rp <%= omsetBersihPajak.toLocaleString('id-ID') %></strong></div>
                 <% } %>
+                <div class='small text-muted mt-1' title='Semua potongan harga yang diberikan pada periode ini, termasuk potongan voucher. Nota yang dibatalkan tidak dihitung.'>Diskon diberikan <strong class='text-danger'>Rp <%= totalDiskon.toLocaleString('id-ID') %></strong> di <%= notaDiskon %> nota</div>
             </div>
         </div>
     </div>
@@ -80,6 +81,7 @@
                 <% if (totalPajak > 0) { %>
                 <div class='small mt-1'>Omset Bersih Pajak Rp <%= omsetBersihPajak.toLocaleString('id-ID') %></div>
                 <% } %>
+                <div class='small mt-1'>Diskon Rp <%= totalDiskon.toLocaleString('id-ID') %> di <%= notaDiskon %> nota</div>
             </div>
         </div>
     </div>
@@ -106,13 +108,14 @@
             <th>Kasir</th>
             <th>Member</th>
             <th>Metode</th>
+            <th class='text-end'>Diskon</th>
             <th class='text-end'>Total Transaksi</th>
             <th>Status</th>
             <% if (isManagerOrAdmin) { %><th class='text-center no-print'>Aksi</th><% } %>
           </tr>
         </thead>
         <tbody>
-          <% if(sales.length > 0) { sales.forEach(s => { const isVoid = s.status === 'VOID'; %>
+          <% if(sales.length > 0) { sales.forEach(s => { const isVoid = s.status === 'VOID'; const diskon = Number(s.discount) || 0; %>
             <tr class='<%= isVoid ? "table-light text-muted" : "" %>'>
               <td><%= fmtWIB(s.date) %></td>
               <td><strong class='<%= isVoid ? "text-decoration-line-through" : "" %>'><%= s.invoice_no %></strong></td>
@@ -120,6 +123,7 @@
               <td><%= s.kasir || 'Admin' %></td>
               <td><% if (s.customer_name) { %><%= s.customer_name %><% } else { %><span class='text-muted small'>Umum</span><% } %></td>
               <td><span class='badge bg-secondary'><%= s.payment_method %></span></td>
+              <td class='text-end <%= isVoid ? "text-decoration-line-through text-muted" : "text-danger" %>'><% if (diskon > 0) { %>- Rp <%= diskon.toLocaleString('id-ID') %><% if (s.voucher_code) { %><div class='small text-muted text-decoration-none'><%= s.voucher_code %></div><% } %><% } else { %><span class='text-muted'>-</span><% } %></td>
               <td class='text-end fw-bold <%= isVoid ? "text-decoration-line-through" : "" %>'>Rp <%= s.total.toLocaleString('id-ID') %></td>
               <td>
                 <% if (isVoid) { %>
@@ -139,7 +143,7 @@
               <% } %>
             </tr>
           <% }) } else { %>
-            <tr><td colspan='<%= isManagerOrAdmin ? 9 : 8 %>' class='text-center p-4 text-muted'>Tidak ada transaksi pada periode ini.</td></tr>
+            <tr><td colspan='<%= isManagerOrAdmin ? 10 : 9 %>' class='text-center p-4 text-muted'>Tidak ada transaksi pada periode ini.</td></tr>
           <% } %>
         </tbody>
       </table>
@@ -183,6 +187,71 @@
       </nav>
     <% } %>
   </div>
+
+  <% /* Rekap diskon khusus Manager/Admin: tuannya bukan keindahan angka, tapi melihat pola.
+         Satu nota berdiskon itu promosi; satu kasir yang berdiskon di hampir semua nota itu
+         yang harus ditanyakan. Transaksi VOID sudah terkecuali di query-nya. */ %>
+  <% if (isManagerOrAdmin) {
+       const persen = (d, s) => (s > 0 ? (d / s * 100).toFixed(1) : '0,0').replace('.', ',');
+     %>
+  <div class='card shadow-sm mt-4'>
+    <div class='card-body'>
+      <h5 class='mb-1'>Rekap Diskon &mdash; <%= periodeLabel %></h5>
+      <div class='small text-muted mb-3'>
+        Dipotong dari <%= totalTx %> transaksi aktif pada periode dan filter yang sedang dipilih.
+        "% diskon" = total potongan dibagi subtotal, jadi angka tinggi berarti harga yang benar-benar
+        masuk kas jauh di bawah harga daftar.
+      </div>
+      <div class='row g-4'>
+        <div class='col-lg-7'>
+          <div class='text-muted small fw-bold text-uppercase mb-2'>Per kasir &amp; cabang</div>
+          <table class='table table-sm align-middle mb-0'>
+            <thead class='table-light'>
+              <tr><th>Kasir</th><th>Cabang</th><th class='text-end'>Nota diskon</th><th class='text-end'>Total Diskon</th><th class='text-end'>% diskon</th></tr>
+            </thead>
+            <tbody>
+              <% if (rekapKasir.length > 0) { rekapKasir.forEach(r => { %>
+                <tr>
+                  <td><%= r.kasir %></td>
+                  <td><span class='badge bg-secondary'><%= r.cabang %></span></td>
+                  <td class='text-end'><%= r.tx_diskon %> / <%= r.tx %></td>
+                  <td class='text-end fw-bold text-danger'>Rp <%= r.diskon.toLocaleString('id-ID') %></td>
+                  <td class='text-end'><%= persen(r.diskon, r.subtotal) %>%</td>
+                </tr>
+              <% }) } else { %>
+                <tr><td colspan='5' class='text-center text-muted py-3'>Tidak ada satu nota pun yang diberi diskon pada periode ini.</td></tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+        <div class='col-lg-5'>
+          <div class='text-muted small fw-bold text-uppercase mb-2'>Per kode voucher</div>
+          <table class='table table-sm align-middle mb-0'>
+            <thead class='table-light'>
+              <tr><th>Kode</th><th class='text-end'>Dipakai</th><th class='text-end'>Total Diskon</th></tr>
+            </thead>
+            <tbody>
+              <% if (rekapVoucher.length > 0) { rekapVoucher.forEach(r => { %>
+                <tr>
+                  <td><code><%= r.kode %></code></td>
+                  <td class='text-end'><%= r.tx %> nota</td>
+                  <td class='text-end fw-bold text-danger'>Rp <%= r.diskon.toLocaleString('id-ID') %></td>
+                </tr>
+              <% }) } else { %>
+                <tr><td colspan='3' class='text-center text-muted py-3'>Belum ada potongan yang tercatat pada periode ini.</td></tr>
+              <% } %>
+            </tbody>
+          </table>
+          <div class='small text-muted mt-2'>
+            "(tanpa kode voucher)" berarti ada potongan yang tercatat di nota tanpa voucher — hanya
+            mungkin bila angkanya dibuat sebelum kolom voucher ada, karena diskon kasir selalu dihitung
+            dari voucher yang dipilih.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <% } %>
 </div>
 
 <div id='print-area' style='display:none;'></div>
@@ -198,6 +267,7 @@ function printThermalReport() {
   h += "<div style='display:flex; justify-content:space-between;'><span>Total Tx</span><span><%= totalTx %></span></div>";
   h += "<div style='display:flex; justify-content:space-between;'><span>Barang Keluar</span><span><%= totalPcs %> Pcs</span></div>";
   h += "<div style='display:flex; justify-content:space-between;'><span>Omset</span><span>Rp <%= totalRp.toLocaleString('id-ID') %></span></div>";
+  h += "<div style='display:flex; justify-content:space-between;'><span>Diskon</span><span><%= totalDiskon.toLocaleString('id-ID') %> (<%= notaDiskon %> nota)</span></div>";
   <% // Angka omset tanpa prefiks "Rp" di baris ini: labelnya sudah panjang dan kertas 44 mm
      // hanya memuat ±30 karakter. %>
   <% if (totalPajak > 0) { %>

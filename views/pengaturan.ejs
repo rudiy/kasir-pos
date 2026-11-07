@@ -1,8 +1,20 @@
 <%- include('layout-header') %>
+<% /* Urutan dari yang paling aman ke yang paling merusak; tiga-tiganya memakai formulir
+       yang sama supaya syarat pengamanannya tidak bisa berbeda-beda. */ %>
+<% const aksiHapus = [
+  { kunci: 'transaksi', judul: 'Kosongkan riwayat transaksi', frasa: 'HAPUS TRANSAKSI',
+    cakupan: 'Semua nota penjualan beserta isinya dihapus. Produk, harga, stok, cabang, dan akun tetap utuh.' },
+  { kunci: 'produk', judul: 'Reset produk & stok', frasa: 'HAPUS PRODUK',
+    cakupan: 'Daftar produk, stok di semua cabang, dan jurnal stok dihapus. Hanya bisa jalan kalau riwayat transaksi sudah kosong, supaya laporan lama tidak menunjuk barang yang tidak ada.' },
+  { kunci: 'pabrik', judul: 'Reset ke kondisi awal pabrik', frasa: 'RESET PABRIK',
+    cakupan: 'Seluruh data operasional dihapus: transaksi, produk, stok, kategori, pelanggan, voucher, pengeluaran, opname, dan penggajian. Cabang, akun pengguna, pengaturan toko, logo, dan gambar QRIS dipertahankan agar aplikasi tetap bisa dipakai login.' }
+] %>
 <div class='p-4'>
   <h2>Pengaturan Toko</h2>
-  <div class='row mt-3'>
-    <div class='col-md-6'>
+  <% if (typeof error !== 'undefined' && error) { %><div class='alert alert-danger mt-2'><%= error %></div><% } %>
+  <% if (typeof info !== 'undefined' && info) { %><div class='alert alert-success mt-2'><%= info %></div><% } %>
+  <div class='row mt-3 g-3'>
+    <div class='col-12 col-lg-6'>
         <div class='card shadow-sm'>
             <div class='card-header bg-white fw-bold'><i class='bi bi-shop'></i> Identitas Toko (Tercetak di Struk)</div>
             <div class='card-body'>
@@ -40,7 +52,124 @@
                 </form>
             </div>
         </div>
+
+        <% const em = (typeof email !== 'undefined' && email) || {}; %>
+        <div class='card shadow-sm mt-3'>
+            <div class='card-header bg-white fw-bold'><i class='bi bi-envelope-paper'></i> Backup ke Email (Opsional)</div>
+            <div class='card-body'>
+                <p class='small text-muted'>
+                    Setiap hari pada jam yang dipilih, aplikasi mengirim satu arsip cadangan lengkap
+                    (database + logo/QRIS + ekspor CSV) ke email Anda. Isinya sama dengan tombol
+                    "Buat &amp; unduh cadangan" di halaman Cadangan &amp; Data, jadi email ini bisa
+                    dipakai sebagai simpanan di luar mesin kasir.
+                </p>
+                <form action='/pengaturan/email' method='POST' class='row g-2 align-items-end'>
+                    <div class='col-12'>
+                        <label class='form-label small mb-1'>Alamat email tujuan</label>
+                        <input type='email' name='backup_email' class='form-control form-control-sm'
+                               value='<%= em.email || "" %>' placeholder='contoh@gmail.com (kosongkan untuk mematikan)'>
+                    </div>
+                    <div class='col-6'>
+                        <label class='form-label small mb-1'>Jam kirim (WIB)</label>
+                        <input type='number' name='backup_hour' class='form-control form-control-sm'
+                               min='0' max='23' value='<%= typeof em.jam === "number" ? em.jam : 22 %>'>
+                    </div>
+                    <div class='col-6 d-grid'>
+                        <button type='submit' class='btn btn-sm btn-primary' style='background-color: var(--navy);'>Simpan</button>
+                    </div>
+                    <div class='col-12'>
+                        <div class='form-text'>
+                            0-23 jam WIB. Jam 22 berarti dikirim saat toko hampir tutup, sekali sehari;
+                            tidak ada email kedua pada hari yang sama walau aplikasi dinyalakan ulang.
+                        </div>
+                    </div>
+                </form>
+
+                <div class='mt-3 small'>
+                    <div><span class='fw-bold'>Status:</span>
+                        <% if (!em.aktif) { %>
+                            <span class='text-muted'>mati — alamat email belum diisi.</span>
+                        <% } else if (!em.smtpSiap) { %>
+                            <span class='text-danger'>email tujuan terisi, tapi server SMTP belum dikonfigurasi di berkas .env (SMTP_HOST / SMTP_USER / SMTP_PASS).</span>
+                        <% } else { %>
+                            <span class='text-success'>hidup — kirim lewat <%= em.smtpHost %>:<%= em.smtpPort %> (<%= em.smtpMetode %>).</span>
+                        <% } %>
+                    </div>
+                    <div><span class='fw-bold'>Terakhir terkirim:</span> <%= em.terkirimTerakhir || 'belum pernah' %></div>
+                    <% if (em.statusTerakhir) { %>
+                        <div><span class='fw-bold'>Hasil kirim terakhir:</span> <%= em.statusTerakhir %></div>
+                    <% } %>
+                </div>
+
+                <% if (em.aktif) { %>
+                <form action='/pengaturan/email-uji' method='POST' class='mt-2 d-flex gap-2'>
+                    <button type='submit' class='btn btn-sm btn-outline-primary'>Kirim sekarang (uji)</button>
+                    <small class='text-muted align-self-center'>Membuat cadangan baru lalu mengirimnya saat ini juga.</small>
+                </form>
+                <% } %>
+            </div>
+        </div>
+    </div>
+
+    <div class='col-12 col-lg-6'>
+      <div class='card border-danger shadow-sm'>
+        <div class='card-header bg-danger text-white fw-bold'><i class='bi bi-exclamation-triangle-fill'></i> Zona Berbahaya — Penghapusan Data</div>
+        <div class='card-body'>
+          <p class='small text-muted mb-3'>
+            Setiap aksi di bawah ini selalu membuat cadangan database lebih dulu, dan penghapusan
+            dibatalkan kalau cadangan gagal dibuat atau gagal diperiksa. Setelah itu frasa
+            konfirmasinya harus diketik persis dan sandi akun Anda dicek ulang.
+            Tidak ada tombol "batalkan" di dalam aplikasi: jalan kembali satu-satunya adalah
+            memulihkan berkas cadangan yang muncul di halaman Cadangan &amp; Data.
+          </p>
+          <div class='list-group'>
+            <% aksiHapus.forEach(a => { %>
+              <div class='list-group-item'>
+                <div class='d-flex justify-content-between align-items-start gap-3'>
+                  <div>
+                    <div class='fw-bold'><%= a.judul %></div>
+                    <div class='small text-muted'><%= a.cakupan %></div>
+                  </div>
+                  <button type='button' class='btn btn-sm btn-outline-danger flex-shrink-0' data-bs-toggle='modal' data-bs-target='#modalHapus<%= a.kunci %>'>Hapus</button>
+                </div>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
+
+<% aksiHapus.forEach(a => { %>
+<div class='modal fade' id='modalHapus<%= a.kunci %>' tabindex='-1'>
+  <div class='modal-dialog'>
+    <form action='/pengaturan/hapus-data' method='POST' class='modal-content'>
+      <input type='hidden' name='aksi' value='<%= a.kunci %>'>
+      <div class='modal-header bg-danger text-white'>
+        <h5 class='modal-title'><%= a.judul %></h5>
+        <button type='button' class='btn-close btn-close-white' data-bs-dismiss='modal'></button>
+      </div>
+      <div class='modal-body'>
+        <p class='small'><%= a.cakupan %></p>
+        <div class='alert alert-warning small mb-3'>
+          Cadangan dibuat otomatis sebelum menghapus. Aksi ini tidak bisa dibatalkan dari aplikasi.
+        </div>
+        <div class='mb-3'>
+          <label class='form-label'>Ketik persis: <code><%= a.frasa %></code></label>
+          <input type='text' name='konfirmasi' class='form-control text-uppercase' autocomplete='off' required>
+        </div>
+        <div class='mb-3'>
+          <label class='form-label'>Sandi akun Anda</label>
+          <input type='password' name='password' class='form-control' autocomplete='current-password' required>
+        </div>
+      </div>
+      <div class='modal-footer'>
+        <button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Batal</button>
+        <button type='submit' class='btn btn-danger'><i class='bi bi-trash me-1'></i>Hapus permanen</button>
+      </div>
+    </form>
+  </div>
+</div>
+<% }) %>
 <%- include('layout-footer') %>

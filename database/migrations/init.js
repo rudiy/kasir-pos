@@ -143,6 +143,16 @@ const initDB = () => {
       key TEXT PRIMARY KEY,
       value TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS data_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      aksi TEXT NOT NULL,
+      backup_file TEXT,
+      baris_terhapus INTEGER DEFAULT 0,
+      keterangan TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `;
   db.exec(schema);
 
@@ -162,6 +172,15 @@ const initDB = () => {
   ensureColumn('sales', 'void_reason', 'TEXT');
   ensureColumn('sales', 'customer_id', 'INTEGER');
   ensureColumn('branches', 'qris_image', 'TEXT');
+  // Jejak audit diskon: voucher_id saja tidak cukup karena voucher boleh dihapus kapan pun
+  // oleh admin, jadi kodenya ikut dibekukan sebagai teks saat nota dibuat. Tanpa snapshot,
+  // nota lama kehilangan penjelasan kenapa angkanya lebih kecil.
+  ensureColumn('sales', 'voucher_id', 'INTEGER');
+  ensureColumn('sales', 'voucher_code', 'TEXT');
+  // Cadangan harian ke email. Kolomnya cuma alamat + jam; kredensial SMTP tinggal di .env
+  // dan tidak pernah menyentuh database, jadi arsip maupun salinan database aman.
+  ensureColumn('settings', 'backup_email', 'TEXT');
+  ensureColumn('settings', 'backup_hour', 'INTEGER DEFAULT 22');
 
   const checkBranch = db.prepare('SELECT * FROM branches WHERE id = 1').get();
   if(!checkBranch) {

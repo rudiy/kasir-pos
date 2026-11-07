@@ -112,10 +112,25 @@ Akun lain — kasir, manager yang sudah ada — tidak pernah ikut berubah.
    menunggu gambar logo selesai dimuat (maks 1,2 detik) sebelum memanggil print, karena struk
    diambil snapshot-nya sedetik setelah `<img>` disisipkan: tanpa penundaan itu logo hilang di
    pencetakan pertama setelah restart atau saat koneksi LAN lemot, lalu muncul lagi berikutnya.
+   Setiap pemakaian voucher **dibekukan di nota**: `sales.voucher_id` dan `sales.voucher_code`
+   diisi server saat checkout (bukan dari request klien), dan kodenya ikut dicetak di struk.
+   Karena itu riwayat tetap terbaca walaupun vouchernya nanti diedit atau dihapus, dan kolom
+   **Dipakai** di halaman `/voucher` menunjukkan berapa nota memakai kode itu beserta total
+   potongannya. Yang belum ada: batas pemakaian — satu voucher aktif boleh dipakai di setiap
+   transaksi tanpa batas, jadi voucher sebaiknya dianggap tombol diskon permanen sampai ada
+   `max_usage`/tanggal berlaku.
 8. **Laporan Penjualan** (`/laporan`) menghitung omzet, HPP, laba kotor, dan laba bersih
    setelah pengeluaran operasional serta gaji. Ringkasan selalu dihitung atas **seluruh**
    transaksi yang cocok dengan filter, sementara tabelnya dipecah 50 baris per halaman;
    baris berstatus VOID tampil sebagai jejak audit tetapi tidak masuk angka ringkasan.
+   Diskon sekarang ikut terlihat: ada kolom **Diskon** di tabel nota (dengan kode vouchernya),
+   baris **Diskon diberikan Rp … di N nota** di kartu Omset, satu baris **Diskon** di struk
+   thermal, dan blok **Rekap Diskon** khusus Manager/Admin berisi per kasir/cabang
+   (jumlah nota berdiskon dibanding seluruh notanya, total potongan, dan `% diskon` =
+   `Σ discount ÷ Σ subtotal`) serta per kode voucher. Rekap ini alat periksa, bukan vonis:
+   satu nota berdiskon itu promosi, sementara satu kasir yang memberi potongan di hampir
+   setiap nota adalah pola yang perlu ditanyakan. Transaksi VOID dikecualikan dari rekap,
+   tetapi jejak kodenya tetap terbaca di baris nota yang dibatalkan.
    **Omset bukan pendapatan toko**: `total = subtotal − diskon + pajak`, jadi angka omzet masih
    memuat PPN yang harus disetor. Karena itu ada baris **Omset Bersih Pajak** (`Σ total − Σ tax`)
    di kartu Omset pada layar dan di struk thermal, muncul hanya bila periode itu memang memungut
@@ -152,6 +167,10 @@ Akun lain — kasir, manager yang sudah ada — tidak pernah ikut berubah.
 9. **Ganti Sandi** (`/ganti-sandi`) tersedia untuk semua role lewat menu sidebar — di layar HP
    lewat nav bawah tombol **Lainnya**. Admin tidak perlu ikut campur saat staff ingin mengganti
    sandinya sendiri.
+10. **Cadangan & Data** (`/backup`, khusus Admin) mengunduh satu ZIP berisi seluruh database +
+   logo/QRIS + CSV, menampilkan berkas cadangan otomatis yang bisa diunduh satu-satu, dan
+   mencatat aksi penghapusan data terakhir. Penghapusan data besar berada di kartu **Zona
+   Berbahaya** pada halaman **Pengaturan Toko**.
 
 ## Pembayaran dan member
 - Metode pembayaran sengaja **statis dua pilihan**: Tunai dan QRIS. Daftarnya divalidasi lagi di
@@ -209,6 +228,69 @@ Data Produk berhenti di dua pilihan. Sekarang pengelolaannya ada di **Kategori P
   ketik nama/barcode. Kalau nanti kategorinya sudah puluhan, tinggal tambahkan chip filter di atas
   grid `views/kasir.ejs`; datanya sudah siap karena `/kasir` sudah ikut menarik `category_id`.
 
+## Impor massal produk dari Excel
+Menambah 40 barang satu-satu lewat form Data Produk itu lambat, dan restok harian pada dasarnya
+hanya mengedit angka stok. Untuk itu ada kartu **Impor massal dari Excel** di `/produk`
+(`isManagerOrAdmin`, sama seperti halaman produknya): unduh template, buka di Excel, unggah kembali.
+Kodenya di `scripts/impor-produk.js`, rutenya `GET /produk/template` dan `POST /produk/impor`.
+
+- **Dua langkah, satu berkas.** Template (`/produk/template`, nama berkas
+  `template-produk-YYYY-MM-DD.csv` mengikuti tanggal WIB) sudah berisi semua produk yang ada
+  lengkap dengan stok tiap cabang, jadi berkas yang sama dipakai untuk dua hal: koreksi harga dan
+  restok harian. Baris petunjuk diawali `#` (delapan baris) dan dilewati saat impor, sehingga tidak
+  mengganggu tabel di Excel.
+- **Formatnya CSV, bukan .xlsx**, dengan pemisah titik-koma dan BOM UTF-8 — sama seperti ekspor di
+  `/backup`, karena itu yang dikenali Excel regional Indonesia. Mengunggah `.xlsx` ditolak dengan
+  pesan yang menyuruh *Save As → CSV (Pemisah Titik-Koma)*; membaca .xlsx berarti menambah pustaka
+  parsing, dan deployment kasir ini sengaja tanpa dependensi baru.
+- **Kolom wajib cuma `nama` dan `harga_jual`.** Kolom lain boleh kosong dan tidak menimpa nilai lama.
+  Nama kolom boleh ditulis variasinya (`harga`, `jual`, `price_sell`, `stok_minimum`, ...) lewat
+  peta alias `KOLOM`; stok cabang dikenali dari `stok_<kode cabang>` atau `stok_<nama_underscore>`
+  dan dipetakan ke id cabang di `petakanKolom`.
+- **`stok_...` adalah STOK AKHIR, bukan tambahan.** Sel kosong = stok cabang itu tidak disentuh.
+  Sel terisi dihitung sebagai selisih terhadap stok sekarang, lalu ditulis lewat
+  `adjustBranchStock(..., 'ADJUST', ...)` — jalur yang sama dipakai penyesuaian manual — sehingga
+  `stock_movements` tetap bercerita dan tidak ada stok yang berubah tanpa jejak.
+- **Barcode yang sudah ada diperbarui, tidak diduplikat.** Ini pilihan yang disengaja: kalau impor
+  selalu membuat barang baru, file hasil unduh template tidak bisa dipakai restok. Produk tanpa
+  barcode mendapat kode otomatis `'899' + 10 angka acak` (pola yang sama dengan form produk).
+  Kategori baru dibuat otomatis sebelum produknya masuk.
+- **Semua atau tidak sama sekali.** `rencanakan()` memvalidasi seluruh baris lebih dulu dan
+  mengembalikan rencana kosong kalau ada satu galat pun, jadi tidak ada jalur pemanggil yang bisa
+  menulis sebagian berkas; rutenya menolak sebelum menyentuh database, dan penulisannya dibungkus
+  satu `db.transaction`. Baris yang jumlah kolomnya tidak sama dengan header (kerap terjadi karena
+  sel kosong di ujung) dilaporkan sebagai galat parser, bukan diam-diam dilewati.
+- **Aman dipakai bolak-balik.** Nilai ekspor diberi apostrof anti-rumus oleh `bersih()`; impor
+  melepas apostrof itu (`lepasPengaman`) sebelum membandingkan, jadi mengunduh template lalu
+  mengunggahnya kembali tidak mengubah apa pun (diverifikasi: nol baris jurnal stok baru).
+  Angka masih terbaca walau ditulis `Rp 15.000` atau `15.000`.
+- **Batasnya:** berkas maksimal 5 MB, dan Manager Cabang hanya bisa menyentuh kolom cabang yang
+  boleh ia akses — baris yang menyinggung cabang lain ditolak, bukan diam-diam diabaikan.
+
+## Penggajian karyawan
+- Periode gaji di modal **Input Gaji** tidak lagi diketik bebas. Kolomnya `<input type='month'>`
+  (`views/penggajian.ejs`) yang menghasilkan `YYYY-MM` dan sudah terisi bulan WIB berjalan saat
+  halaman dibuka. Sebelumnya kolom itu `type='text'` + `required` dengan placeholder
+  `Contoh: November 2026`: bubble "Please fill out this field." muncul begitu tombol Simpan ditekan
+  sementara kolomnya masih kosong, dan kolom teks bebas tidak punya acuan format — `November 2026`,
+  `11/2026`, dan `Nov 26` sama-sama diterima server lalu masuk ke satu kolom yang sama.
+- Browser tanpa dukungan `type=month` (Safari desktop) tetap bisa memakai halaman ini. Skripnya
+  memeriksa `el.type`; kalau masih `text`, input disembunyikan dan dua `<select>` (12 nama bulan
+  Indonesia + tahun 6 tahun ke belakang sampai 1 tahun ke depan) menampilkannya gantinya. Keduanya
+  menulis balik ke input yang sama, jadi nama field dan format kiriman tidak berubah. Diperiksa dengan
+  menjalankan skrip bawaan halaman setelah `type` dipaksa `text`: input hilang dari layout, select
+  muncul dan terpilih November/2026, nilai yang terkirim tetap `2026-11`.
+- Server hanya menerima keluaran pemilih. `/penggajian/add` mencocokkan `^(\d{4})-(\d{2})$` dengan
+  bulan 01–12; nilai lain **tidak ditulis sama sekali** dan halaman dibuka lagi lewat
+  `/penggajian?error=...` sehingga pesannya tampil sebagai alert di atas tabel, bukan hilang diam-diam.
+- Yang tersimpan di `payroll.month_year` **tetap label bulan seperti biasa** (`November 2026`), bukan
+  `2026-11`. Tidak ada migrasi, tidak ada dua format campuran di satu kolom, dan badge periode di
+  tabel maupun laporan tidak berubah. Konversinya satu arah di route: angka pemilih → nama bulan dari
+  `NAMA_BULAN`, konstanta yang sama dipakai `/laporan` (duplikat lokalnya di situ sudah dihapus).
+- Perlu diketahui: `/laporan` menjumlahkan gaji dari kolom `date` (tanggal input), bukan dari
+  `month_year` (periode yang dipilih). Gaji berperiode "November 2025" yang diinput 3 Desember ikut
+  ke laba-rugi Desember. Perilaku ini tidak diubah di sini karena sudah berlaku sejak fitur gaji dibuat.
+
 ## Label barcode
 Barang yang kemasannya tidak punya barcode tetap bisa discan di kasir kalau labelnya dicetak dari
 halaman **Cetak Barcode** (`/barcode`, role Manager + Admin, sama seperti Data Produk).
@@ -244,6 +326,16 @@ halaman **Cetak Barcode** (`/barcode`, role Manager + Admin, sama seperti Data P
   `@page { size: 58mm auto; margin: 0 }`. `break-inside: avoid` menjaga satu label tidak terbelah di
   antar halaman. Barcode dibuat sebagai SVG inline sehingga tidak ada race seperti logo struk yang
   harus menunggu gambar selesai dimuat.
+- Kartu **Kertas label** disusun dua kolom: `col-xl-7` berisi semua isian (preset, ukuran custom,
+  geser, jarak potong, tinggi & lebar barcode, lalu tombol penggaris + **Pakai ukuran otomatis**
+  sejajar dalam satu baris), `col-xl-5` berisi **Penjelasan ukuran** (`#infoKertas` + `#infoBarcode`).
+  Penjelasannya sengaja **tidak ikut masuk grid isian** lagi: dulu satu sel berisi tiga kontrol plus
+  paragraf panjang di dalam baris `align-items-end`, sehingga tinggi baris ditentukan paragraf dan
+  kolom di sebelahnya terlihat menggantung di tengah. Di bawah 1200px penjelasan jatuh jadi satu
+  baris penuh di bawah isian. Terukur di iframe: 1280px kedua kolom sebaris (isian 291–560px,
+  penjelasan mulai 853px), 1100/1000/820/390px semuanya menumpuk dan tidak ada `scrollWidth` melebihi
+  viewport. `#maknaJarak` — teks "cara membaca angka jarak" yang menyebut *tombol di atas* — dipasang
+  tepat di bawah baris tombol supaya rujukan itu tetap benar.
 - Kartu **Kertas label** menyediakan bentuk kertas: `Roll 58 mm — tanpa potong` (satu kolom isi 44 mm,
   tiap label ditutup garis putus-putus sebagai patokan gunting) dan preset die-cut
   `50 × 30`, `43 × 25`, `33 × 15` mm, plus **Ukuran sendiri** (lebar 20–58, tinggi 12–80 mm).
@@ -335,8 +427,16 @@ kasir-pos/
   scripts/
     checkpoint-db.js        pindahkan isi kasir.db-wal ke kasir.db
     backup-db.js            cadangan online + retensi, dipakai juga oleh penjadwal di server.js
+                            dan oleh tombol cadangan lengkap di halaman /backup
+    zip.js                  penulis arsip ZIP sendiri (tanpa paket baru, lihat /backup)
+    csv.js                  pembaca/penulis CSV: BOM, pemisah titik-koma, guard anti-rumus
+    export-csv.js           kolom + query ekspor CSV transaksi/produk/stok/cabang
+    impor-produk.js         template Excel + pentaan kolom + validasi impor produk/stok cabang
+    cadangan-zip.js         merakit satu ZIP cadangan lengkap (dipakai /backup dan email)
+    email-cadangan.js       gerbang "sekali sehari" + status, penjaga jadwal di server.js
+    mail-smtp.js          SMTP tulis tangan di atas node:tls/node:net (STARTTLS + AUTH LOGIN)
   views/                    tampilan EJS, semuanya berkas datar (tanpa subfolder)
-  public/                   aset statis dan hasil upload logo
+  public/                   aset statis; uploads/ = logo + QRIS per cabang, TIDAK ikut git
     vendor/                 Bootstrap 5.3.0 + bootstrap-icons 1.11.1 + JsBarcode 3 lokal (tanpa CDN)
     sw.js                   service worker: cache halaman terakhir untuk mode offline
   backup/                   hasil cadangan otomatis, tidak ikut git
@@ -364,6 +464,12 @@ helper `getBranchScope` menentukan cabang mana yang dipakai suatu query.
   sidebar lewat JavaScript (`#sidebarMenu` di `layout-header.ejs`), jadi aturan role tidak ditulis
   dua kali dan rute baru otomatis ikut muncul tanpa menyentuh nav.
 - **Tablet dan PC (≥ 768px):** tidak berubah, sidebar seperti semula dan nav bawah disembunyikan.
+- **Grid dua kolom kartu** (`/pengaturan` dan kartu impor di `/produk`) memakai `col-lg-*`, bukan
+  `col-md-*`. Alasannya ukurannya yang sebenarnya: di 768px sidebar masih tampil dan hanya
+  menyisakan ±500px untuk isi, sehingga dua kolom jatuh jadi ±250px dan label form ikut patah.
+  Diukur lewat iframe berlebar 390/768/834/991/992/1024/1280: menumpuk sampai 991px, berdampingan
+  mulai 992px dengan kolom terkecil 291px, dan tidak ada `scrollWidth` melebihi viewport di semua
+  lebar itu.
 - Bar bawah tingginya ditambah `env(safe-area-inset-bottom)` (dengan `viewport-fit=cover` di
   `layout-header.ejs`) supaya tidak tertutup gesture bar; isi `.app-main` dan bilah bayar di
   `/kasir` dinaikkan setinggi bar tersebut agar tetap bisa disentuh.
@@ -374,6 +480,15 @@ helper `getBranchScope` menentukan cabang mana yang dipakai suatu query.
   pesanan panjang tapi tidak di bawah `25vh` supaya tombol produk tetap ada. Aturan ini memakai
   `:has()`; di browser yang belum mendukungnya halaman tetap jalan dengan layout lama (satu gulir
   halaman), hanya bilah bayarnya kembali sticky.
+
+- **Target sentuh ≤ 767,98px** berlaku untuk semua kontrol form, bukan hanya input angka:
+  `input.form-control`, `select.form-select`, dan `textarea.form-control` sama-sama `min-height: 42px`
+  dan `font-size: 16px` (16px supaya iOS tidak memaksa zoom saat input difokus). Aturan sebelumnya
+  cuma menjangkau `input[type=number]`, akibatnya sebuah `<select>` 34px di samping angka 42px membuat
+  satu baris formulir terlihat tidak rata — terukur 8px selisih puncaknya di `/barcode` pada lebar
+  600–700px. Setelah disamakan, tinggi semua kontrol di halaman itu seragam 42px pada 390px dan 31px
+  pada 1280px. Layar kasir diperiksa ulang setelah aturan ini melebar: BAYAR tetap berada di layar
+  390×740 dan `scrollWidth` tidak melebar di 390 maupun 768px.
 
 ## Perintah yang tersedia
 | Perintah | Fungsi |
@@ -401,6 +516,120 @@ luar mesin kasir secara berkala — kalau laptop kasir hilang, cadangan di dalam
 **Memulihkan:** matikan server, salin `backup/kasir-<terbaru>.db` menimpa
 `database/kasir.db`, hapus `kasir.db-wal`/`kasir.db-shm` lama bila ada, lalu jalankan
 `npm start`. Migrasi di `init.js` hanya menambah yang belum ada, jadi data lama tetap utuh.
+
+### Halaman Cadangan & Data (`/backup`, khusus Administrator)
+Berkas di folder `backup/` hanya berisi database. Halaman `/backup` menutup dua lubang itu:
+
+- **Cadangan lengkap (ZIP).** Tombol **Buat & unduh cadangan** menjalankan cadangan online
+  yang sama (checkpoint + `integrity_check`) lalu membungkusnya menjadi satu ZIP berisi
+  `database/kasir.db`, seluruh isi `public/uploads/` (logo + gambar QRIS semua cabang),
+  empat ekspor CSV, dan `BACA-DULU.txt` berisi langkah pemulihan. Strukturnya sengaja
+  meniru folder aplikasi supaya memulihkan = menyalin timpa. ZIP ditulis oleh
+  `scripts/zip.js`, penulis arsip sendiri tanpa paket tambahan — deployment kasir ini
+  cuma `git pull` lalu `npm run dev`, jadi menambah dependensi berarti semua mesin harus
+  install ulang. `.env` **tidak ikut** supaya rahasia tidak tersebar lewat berkas cadangan.
+- **Ekspor CSV** transaksi, produk, stok per cabang, dan cabang
+  (`GET /backup/ekspor/<jenis>`). Pemisahnya titik-koma dan berkasnya bersandi UTF-8
+  dengan BOM, sesuai Excel regional Indonesia. Nilai yang diawali `=`, `+`, `-` atau `@`
+  diberi apostrof agar tidak dijalankan Excel sebagai rumus.
+- **Daftar berkas cadangan** di server beserta tombol unduh per berkas. Nama berkas
+  divalidasi dengan pola ketat (`kasir-YYYYMMDD-HHmmss.db`), jadi tidak ada jalur untuk
+  membaca berkas lain di luar folder cadangan.
+
+Cadangan ke Google Drive belum dipasang. Yang sudah otomatis keluar dari mesin kasir adalah
+cadangan harian ke email — lihat di bawah. Google Drive masih harus unduh manual.
+
+### Cadangan harian ke email (opsional)
+Folder `backup/` berada di mesin kasir yang sama dengan database, jadi ia tidak menolong kalau
+laptopnya hilang atau rusak. Kalau alamat email diisi, aplikasi membuat satu ZIP per hari dan
+mengirimnya sebagai lampiran — isinya **sama persis** dengan tombol "Buat & unduh cadangan" karena
+keduanya memakai perakit yang sama, `scripts/cadangan-zip.js`. Tidak ada dua jenis arsip yang bisa
+beda isinya.
+
+Mengaturnya ada dua tempat, dan sengaja dipisah:
+
+| Di mana | Isi | Kenapa di sana |
+| --- | --- | --- |
+| `/pengaturan`, kartu **Backup ke Email** | alamat tujuan + jam kirim (0-23 WIB, bawaan 22) | pemegang kasir yang tahu kapan tokonya tutup; tersimpan di `settings.backup_email` / `settings.backup_hour` dan hanya bisa diubah Administrator (`isAdmin`) |
+| `.env` | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, opsional `SMTP_SECURE` / `SMTP_CA_FILE` / `SMTP_TIMEOUT_MS` / `EMAIL_BACKUP_INTERVAL_MIN` | rahasia tidak pernah masuk database, sehingga berkas cadangan, salinan `.db`, dan ekspor CSV tidak ikut membawa kredensial |
+
+Cara kerjanya:
+
+- **Sekali sehari, di jam tutup.** Penjadwalnya bangun tiap `EMAIL_BACKUP_INTERVAL_MIN` menit
+  (bawaan 5) tetapi hanya mengirim kalau jam WIB sudah melewati jam yang disimpan **dan** belum ada
+  email terkirim pada tanggal WIB hari ini; tanggal terakhir itu disimpan di `app_state`
+  (`email_cadangan_terkirim`). Aplikasi dinyalakan ulang, jamnya digeser, atau servernya mati
+  setengah hari — tidak akan ada email kedua pada hari yang sama, dan tidak ada hari yang terlewat
+  diam-diam.
+- **Alamat tujuan kosong = fitur mati.** Tidak ada jadwal, tidak ada peringatan, dan status di kartu
+  menampilkan "mati — alamat email belum diisi".
+- **SMTP ditulis tangan** (`scripts/mail-smtp.js`, di atas `node:tls`/`node:net`) karena menambah
+  dependensi berarti setiap mesin kasir harus `npm install` ulang. Port 465 pakai TLS langsung,
+  587 naik lewat STARTTLS; kalau server tidak menawarkan STARTTLS, autentikasi **ditolak** dan
+  sandi tidak pernah dikirim. Sertifikat selalu diverifikasi (`rejectUnauthorized: true`); CA privat
+  dilayani lewat `SMTP_CA_FILE`, bukan dengan mematikan verifikasi.
+- **Tombol "Kirim sekarang (uji")** (`POST /pengaturan/email-uji`) menembus gerbang jam dan gerbang
+  "hari ini sudah terkirim", jadi konfigurasi baru bisa dipastikan hari itu juga tanpa menunggu tutup
+  toko. Hasil kirim terakhir (termasuk pesan galat dari server) disimpan dan tampil di kartu, begitu
+  juga tanggal terkirim terakhir — tanpa pernah menampilkan sandi.
+- **Gagal kirim tidak pernah menjatuhkan kasir.** `kirim()` tidak melempar; ia mengembalikan
+  `{ok, pesan}` yang hanya masuk log dan status halaman.
+
+Catatan keamanan yang perlu dibaca sebelum fitur ini dinyalakan: lampirannya adalah **seluruh
+database toko** — nota penjualan, nama pelanggan, harga beli, dan stok semua cabang. Email tersebut
+hanya aman seaman kotak masuknya, jadi:
+
+- pakai **sandi aplikasi** (Gmail: 2-Step Verification → App passwords), bukan sandi akun, supaya
+  kebocorannya bisa dicabut sendiri dan tidak membuka surat-surat lain;
+- kirim ke alamat pribadi, bukan alamat bersama atau grup toko;
+- kalau memang tidak perlu menyimpan riwayat selama itu, pertimbangkan menyaringnya di sisi
+  email (label + auto-delete) daripada menambah masa retensi di `.env` — `BACKUP_KEEP` hanya
+  mengatur berkas di mesin kasir, tidak menghitung salinan yang sudah keluar.
+
+`.env` tidak ikut masuk ZIP maupun database, dan status email hanya membaca `SMTP_HOST`/`SMTP_PORT`
+untuk menampilkan tujuan — jadi halaman `/pengaturan` dan log tidak pernah membocorkan kredensial.
+
+### Pindah ke server lain
+`git clone` saja tidak cukup: `database/kasir.db`, `public/uploads/`, dan `.env` tidak
+dilacak git. Urutan yang benar:
+
+1. di server lama buka `/backup` → **Buat & unduh cadangan**;
+2. di server baru install aplikasi (`npm install`, `npm run dev` sekali supaya skema
+   terbentuk), lalu hentikan;
+3. salin ZIP, ekstrak, dan timpa folder `database/` serta `public/uploads/` di server baru;
+4. buat `.env` baru berisi `SESSION_SECRET` (nilai acak sendiri) dan `ADMIN_PASSWORD`
+   bila perlu;
+5. jalankan — data lama, stok semua cabang, dan gambar QRIS ikut semuanya.
+
+## Penghapusan data bertingkat (Zona Berbahaya)
+Di `/pengaturan`, kartu **Zona Berbahaya** menyediakan tiga aksi dengan cakupan berbeda,
+dari yang paling aman sampai paling merusak:
+
+| Aksi | Yang hilang | Yang tetap ada |
+| --- | --- | --- |
+| Kosongkan riwayat transaksi (`HAPUS TRANSAKSI`) | `sales`, `sale_items`, jurnal stok tipe `SALE`/`VOID` | produk, harga, **stok**, cabang, akun, pengaturan |
+| Reset produk & stok (`HAPUS PRODUK`) | `products`, `stock_per_branch`, `stock_movements`, transfer | transaksi (karenanya diblokir selama masih ada nota), kategori, akun |
+| Reset ke kondisi awal pabrik (`RESET PABRIK`) | transaksi, produk, stok, kategori, pelanggan, voucher, pengeluaran, opname, penggajian | cabang, akun, pengaturan toko, logo/QRIS, jejak audit |
+
+Ketiganya melewati gerbang yang sama, dan urutannya sengaja begitu:
+
+1. frasa konfirmasi harus diketik persis (huruf besar/kecil bebas, kata-katanya tidak);
+2. sandi akun yang sedang login diverifikasi ulang dengan bcrypt;
+3. **cadangan dibuat lebih dulu** — kalau cadangan gagal dibuat atau gagal
+   `integrity_check`, penghapusan dibatalkan;
+4. semua `DELETE` jalan dalam satu transaksi SQLite, jadi tidak pernah ada keadaan
+   setengah terhapus.
+
+Reset produk diblokir selama masih ada transaksi karena `sale_items.product_id` tidak
+memiliki foreign key: produk yang hilang akan membuat laporan lama menampilkan barang
+yang tidak pernah ada. Kalau memang mau menghapus keduanya, jalankan aksi pertama
+lebih dulu.
+
+Setiap aksi yang berhasil ditulis ke tabel `data_actions` (siapa, aksi apa, berapa baris,
+dan nama berkas cadangan sebelum hapus) dan tampil di halaman `/backup`. Tabel ini **tidak
+ikut terhapus** oleh aksi mana pun, termasuk reset pabrik, jadi riwayat keputusan tetap
+bisa dibaca. Tidak ada tombol batal di aplikasi: jalan kembali satu-satunya adalah
+memulihkan berkas cadangan yang tercatat di situ.
 
 ## Menjalankan di latar belakang
 `npm run dev` dan `npm start` menempel di jendela terminal: jendela ditutup, kasir mati.
@@ -536,7 +765,8 @@ kasir tetap bisa dipakai lewat alamat LAN, dengan struk QRIS dan harga yang ters
 ## Database dan backup
 - Storage: SQLite satu berkas di `database/kasir.db`, mode WAL, foreign key aktif.
 - Migrasi berjalan tiap start: tabel baru dibuat bila belum ada, dan kolom tambahan
-  (`sales.subtotal/discount/tax`, `sales.customer_id`, `branches.qris_image`, `settings.tax_rate`) ditambahkan lewat
+  (`sales.subtotal/discount/tax`, `sales.customer_id`, `sales.voucher_id/voucher_code`,
+  `branches.qris_image`, `settings.tax_rate`, `settings.backup_email/backup_hour`) ditambahkan lewat
   `ensureColumn` tanpa merusak data lama.
 - Sumber kebenaran stok adalah `stock_per_branch`, **bukan** `products.stock`. Setiap
   perubahan stok (penjualan, opname, koreksi, transfer) tercatat di `stock_movements`,
@@ -545,6 +775,9 @@ kasir tetap bisa dipakai lewat alamat LAN, dengan struk QRIS dan harga yang ters
   `database/migrations/init.js` dan sumber data adalah file di mesin kasir plus folder
   `backup/`. Lihat bagian **Cadangan database** di bawah untuk cara mencadangkan dan
   memulihkan.
+- Tabel `data_actions` adalah jejak penghapusan data besar (Zona Berbahaya): siapa, aksi
+  apa, berapa baris dihapus, dan berkas cadangan apa yang dibuat sebelum hapus. Isinya
+  sengaja tidak ikut dibersihkan oleh aksi reset mana pun.
 
 ## Aset lokal dan perilaku offline
 - Seluruh CSS/JS/font Bootstrap diambil dari `public/vendor/`, jadi tidak ada satu pun
@@ -582,6 +815,23 @@ kasir tetap bisa dipakai lewat alamat LAN, dengan struk QRIS dan harga yang ters
   terdahulu, jadi sudah diganti dan sebaiknya dianggap tidak dipakai lagi.
 - Berkas `kasir-pos.zip` di root adalah arsip lama, bukan bagian aplikasi, dan tidak perlu di-commit.
 - Ganti kredensial default dan batasi akses jaringan ke mesin kasir sebelum dipakai nyata.
+- Diskon kasir tidak bisa dikarang: nominalnya dihitung server dari voucher yang dipilih, dan
+  pemakaiannya dibekukan di nota (`voucher_id` + `voucher_code`) supaya bisa diaudit. Yang masih
+  terbuka adalah **batas pemakaian** — voucher aktif belum punya `max_usage`, kuota per hari, atau
+  tanggal berlaku, jadi satu kode bisa dipakai di setiap nota tanpa batas. Kontrol yang belum
+  dipasang berikutnya: ambang persetujuan Manager (diskon di atas X% butuh PIN) dan rekonsiliasi
+  laci harian, karena diskon curang ketahuan dari selisih kas, bukan dari satu nota.
+- Penghapusan data massal (Zona Berbahaya di `/pengaturan`) dikunci tiga lapis: frasa
+  konfirmasi, sandi login yang dicek ulang, dan cadangan yang harus berhasil sebelum satu
+  baris pun dihapus. Itu semua hanya memperlambat tangan yang salah, bukan tangan yang
+  punya sandi admin — jadi sandi Administrator tidak boleh dibagikan, dan kebiasaan yang
+  menyelamatkan adalah mengunduh **Cadangan lengkap** di `/backup` keluar mesin sebelum
+  menjalankan aksi mana pun.
+- Cadangan harian ke email mengirim **seluruh isi database** sebagai lampiran (nota, nama
+  pelanggan, harga beli, stok semua cabang). Keamanan datanya pindah menjadi keamanan kotak
+  masuk: pakai sandi aplikasi yang bisa dicabut sendiri, kirim ke alamat pribadi, dan matikan
+  alamatnya di **/pengaturan** kalau alamat itu berbagi dengan orang lain. Kredensial SMTP
+  sendiri tidak pernah menyentuh database maupun berkas cadangan.
 - Sebelum hostname hasil tunnel dipakai transaksi, selesaikan checklist di bagian
   **Yang wajib ditutup sebelum tunnel dipakai transaksi** — yang paling penting Access
   dan `SESSION_SECRET`.

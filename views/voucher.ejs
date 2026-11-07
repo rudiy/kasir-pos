@@ -7,12 +7,13 @@
   <div class='card shadow-sm'>
     <div class='card-body table-responsive'>
       <table class='table table-hover align-middle'>
-        <thead class='table-light'><tr><th>Kode Voucher</th><th>Potongan (Rp)</th><th>Status</th><th class='text-center'>Aksi</th></tr></thead>
+        <thead class='table-light'><tr><th>Kode Voucher</th><th>Potongan (Rp)</th><th class='text-end'>Dipakai</th><th>Status</th><th class='text-center'>Aksi</th></tr></thead>
         <tbody>
           <% if(vouchers.length > 0) { vouchers.forEach(v => { %>
             <tr>
               <td><code><%= v.code %></code></td>
               <td class='text-success fw-bold'>Rp <%= v.value.toLocaleString('id-ID') %></td>
+              <td class='text-end'><%= v.dipakai %> nota<div class='small text-muted'>Rp <%= v.total_diskon.toLocaleString('id-ID') %></div></td>
               <td><span class='badge bg-success'>Aktif</span></td>
               <td class='text-center'>
                 <form action='/voucher/delete' method='POST' class='d-inline' onsubmit='return confirm("Hapus voucher ini?")'>
@@ -21,9 +22,14 @@
                 </form>
               </td>
             </tr>
-          <% }) } else { %><tr><td colspan='4' class='text-center'>Belum ada voucher.</td></tr><% } %>
+          <% }) } else { %><tr><td colspan='5' class='text-center'>Belum ada voucher.</td></tr><% } %>
         </tbody>
       </table>
+      <div class='small text-muted mt-2'>
+        "Dipakai" dihitung dari nota yang masih aktif pada seluruh periode (nota yang dibatalkan tidak
+        ikut). Menghapus voucher di sini tidak menghapus jejaknya: kode dan potongannya sudah dibekukan
+        di setiap nota, jadi riwayat lama tetap bisa dibaca di Laporan Penjualan.
+      </div>
     </div>
   </div>
 </div>

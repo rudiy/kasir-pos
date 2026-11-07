@@ -8,6 +8,25 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
 .product-card { cursor: pointer; transition: transform 0.1s; }
 .product-card:hover { transform: scale(1.02); border-color: var(--gold); }
 
+/* Tombol Grid/Daftar di halaman kasir (views/kasir.ejs) hanya menempelkan kelas
+   mode-daftar pada #product-grid, jadi keranjang, pencarian dan total tidak ikut berubah. */
+#product-grid .produk-nama { min-width: 0; }
+#product-grid .produk-kode { display: none; }
+#product-grid.mode-daftar > div { flex: 0 0 100%; width: 100%; max-width: 100%; }
+#product-grid.mode-daftar .card-body { display: flex; align-items: center; gap: .75rem; text-align: left !important; padding: .45rem .75rem !important; }
+#product-grid.mode-daftar .produk-nama { flex: 1 1 auto; }
+#product-grid.mode-daftar .card-title { margin-bottom: 0; }
+/* Nama jangan dipotong di mode daftar: barisnya memang melebar supaya produk yang mirip
+   bisa dibedakan tanpa membuka menu Produk. */
+#product-grid.mode-daftar .card-title.text-truncate { white-space: normal; overflow: visible; text-overflow: clip; }
+#product-grid.mode-daftar .produk-kode { display: block; color: #64748B; }
+#product-grid.mode-daftar p { flex: 0 0 auto; min-width: 105px; text-align: right; }
+#product-grid.mode-daftar small.text-muted { flex: 0 0 auto; min-width: 58px; text-align: right; }
+#product-grid.mode-daftar .product-card:hover { transform: none; border-color: var(--gold); background: #F1F5F9; }
+/* Di layar sempit setiap milimeter dipakai kartu produk, jadi label penjelasnya disembunyikan;
+   dua tombol Grid/Daftar sudah cukup jelas dari ikonnya. */
+@media (max-width: 575.98px) { #produkTampilanBar > .small { display: none; } }
+
 /* ==================== RESPONSIVE (HP / TABLET / PC) ==================== */
 .sidebar { width: var(--sidebar-w); }
 .app-main { height: 100vh; height: 100dvh; }
@@ -36,10 +55,11 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
   .btn-group { flex-wrap: wrap; }
   .modal-dialog { margin: .5rem; max-width: calc(100% - 1rem); }
 
-  /* Target sentuh: 44px dan font 16px supaya iOS tidak zoom-in saat input difokus. */
+  /* Target sentuh: 44px dan font 16px supaya iOS tidak zoom-in saat input difokus.
+     Semua kontrol tingginya sama, bukan hanya input angka: kalau tidak, sebuah <select>
+     34px di samping angka 42px membuat satu baris formulir terlihat tidak rata. */
   .btn, .btn-sm { min-height: 42px; }
-  input.form-control, select.form-select, textarea.form-control { font-size: 16px; }
-  input[type=number].form-control { min-height: 42px; }
+  input.form-control, select.form-select, textarea.form-control { font-size: 16px; min-height: 42px; }
 }
 
 /* Tablet potret & HP: layar kasir ditumpuk supaya kartu produk dan keranjang tidak sempit. */

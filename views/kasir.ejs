@@ -9,13 +9,23 @@
         </select>
       <% } %>
     </div>
-    <input type='text' id='barcode-input' class='form-control mb-3 p-3 shadow-sm' placeholder='Scan Barcode atau Cari Produk (F2)...' autofocus>
+    <input type='text' id='barcode-input' class='form-control mb-2 p-3 shadow-sm' placeholder='Scan Barcode atau Cari Produk (F2)...' autofocus>
+    <div class='d-flex justify-content-end mb-2' id='produkTampilanBar'>
+      <div class='small text-muted me-2 align-self-center'>Tampilan produk:</div>
+      <div class='btn-group btn-group-sm' role='group' aria-label='Tampilan daftar produk'>
+        <button type='button' class='btn btn-secondary' id='btnTampilanGrid' onclick='setTampilanProduk("grid")'><i class='bi bi-grid-3x3-gap-fill me-1'></i>Grid</button>
+        <button type='button' class='btn btn-outline-secondary' id='btnTampilanDaftar' onclick='setTampilanProduk("daftar")'><i class='bi bi-list-ul me-1'></i>Daftar</button>
+      </div>
+    </div>
     <div class='row g-2' id='product-grid'>
       <% products.forEach(p => { %>
         <div class='col-6 col-sm-4 col-xl-3'>
           <div class='card product-card h-100' data-product='<%= encodeURIComponent(JSON.stringify(p)) %>' onclick='addToCartFromData(this)'>
             <div class='card-body text-center p-2'>
-              <h6 class='card-title text-truncate'><%= p.name %></h6>
+              <div class='produk-nama'>
+                <h6 class='card-title text-truncate'><%= p.name %></h6>
+                <% if (p.barcode) { %><small class='produk-kode'><%= p.barcode %></small><% } %>
+              </div>
               <p class='text-success fw-bold mb-0'>Rp <%= p.price_sell.toLocaleString('id-ID') %></p>
               <small class='text-muted'>Stok: <%= p.stock %></small>
             </div>
@@ -328,6 +338,9 @@ function printReceipt(invoice, amount, result, metode) {
   h += '<hr style="border-top:1px dashed #000;">';
   h += '<div style="display:flex; justify-content:space-between;"><span>Subtotal</span><span>' + formatter.format(result.subtotal) + '</span></div>';
   if(result.discount > 0) h += '<div style="display:flex; justify-content:space-between; color:red;"><span>Diskon</span><span>-' + formatter.format(result.discount) + '</span></div>';
+  // Kode voucher ikut tercetak supaya pelanggan dan pemilik punya bukti diskon dari program
+  // yang mana; kalau tidak dicetak, potongan harga di nota tidak bisa ditelusuri.
+  if(result.voucherCode) h += '<div style="display:flex; justify-content:space-between;"><span>Voucher</span><span>' + result.voucherCode + '</span></div>';
   if(result.tax > 0) h += '<div style="display:flex; justify-content:space-between;"><span>Pajak <%= Number(settings.tax_rate || 0) %>%</span><span>' + formatter.format(result.tax) + '</span></div>';
   h += '<div style="display:flex; justify-content:space-between;"><strong>Total</strong><strong>' + formatter.format(result.total) + '</strong></div>';
   h += '<div style="display:flex; justify-content:space-between;"><span>Bayar</span><span>' + formatter.format(amount) + '</span></div>';
@@ -365,6 +378,29 @@ function filterProductGrid(keyword) {
     col.style.display = !term || col.textContent.toLowerCase().includes(term) ? '' : 'none';
   });
 }
+
+// Grid/Daftar hanya mengubah tampilan kartu produk; isi, harga, stok dan cara kerjanya
+// (klik = masuk keranjang) tetap sama. Pilihannya disimpan per perangkat, sama seperti
+// pengaturan kertas di /barcode.
+const KUNCI_TAMPILAN_PRODUK = 'kasir-tampilan-produk';
+
+function setTampilanProduk(mode, simpan) {
+  const daftar = mode === 'daftar';
+  document.getElementById('product-grid').classList.toggle('mode-daftar', daftar);
+  ['Grid', 'Daftar'].forEach(nama => {
+    const btn = document.getElementById('btnTampilan' + nama);
+    const aktif = daftar === (nama === 'Daftar');
+    btn.classList.toggle('btn-secondary', aktif);
+    btn.classList.toggle('btn-outline-secondary', !aktif);
+  });
+  if (simpan !== false) {
+    try { localStorage.setItem(KUNCI_TAMPILAN_PRODUK, daftar ? 'daftar' : 'grid'); } catch (e) {}
+  }
+}
+
+setTampilanProduk((() => {
+  try { return localStorage.getItem(KUNCI_TAMPILAN_PRODUK) === 'daftar' ? 'daftar' : 'grid'; } catch (e) { return 'grid'; }
+})(), false);
 
 const barcodeInput = document.getElementById('barcode-input');
 barcodeInput.addEventListener('input', (e) => filterProductGrid(e.target.value.trim()));

@@ -4,6 +4,9 @@
     <h2>Penggajian Karyawan / Kasir</h2>
     <button class='btn btn-primary' data-bs-toggle='modal' data-bs-target='#modalPay' style='background-color: var(--navy);'>+ Input Gaji</button>
   </div>
+  <% if (typeof error !== 'undefined' && error) { %>
+    <div class='alert alert-danger alert-dismissible fade show'><%= error %><button type='button' class='btn-close' data-bs-dismiss='alert'></button></div>
+  <% } %>
   <div class='card shadow-sm'>
     <div class='card-body table-responsive'>
       <table class='table table-hover align-middle'>
@@ -40,7 +43,23 @@
                 <% users.forEach(u => { %><option value='<%= u.id %>'><%= u.name %> (<%= u.role %>)</option><% }) %>
             </select>
         </div>
-        <div class='mb-2'><label>Bulan & Tahun (Periode)</label><input type='text' name='month_year' class='form-control' required placeholder='Contoh: November 2026'></div>
+        <div class='mb-2'>
+          <label class='form-label' for='month_year'>Bulan & Tahun (Periode)</label>
+          <input type='month' id='month_year' name='month_year' class='form-control' required value='<%= bulanIni %>'>
+          <div class='form-text'>Bulan dan tahun dipilih, tidak diketik. Bawaannya bulan ini.</div>
+          <div class='row g-2 mt-0 d-none' id='fallbackPeriode'>
+            <div class='col-7'>
+              <select id='fbBulan' class='form-select'>
+                <% namaBulan.forEach((n, i) => { %><option value='<%= String(i + 1).padStart(2, "0") %>'><%= n %></option><% }) %>
+              </select>
+            </div>
+            <div class='col-5'>
+              <select id='fbTahun' class='form-select'>
+                <% const t = Number(bulanIni.slice(0, 4)); for (let y = t - 6; y <= t + 1; y++) { %><option value='<%= y %>'><%= y %></option><% } %>
+              </select>
+            </div>
+          </div>
+        </div>
         <div class='mb-2'><label>Nominal Gaji (Rp)</label><input type='number' name='amount' class='form-control' required placeholder='0'></div>
         <div class='mb-2'><label>Keterangan / Bonus</label><textarea name='notes' class='form-control' rows='2'></textarea></div>
       </div>
@@ -48,4 +67,21 @@
     </form>
   </div>
 </div>
+<script>
+(function () {
+  const el = document.getElementById('month_year');
+  // Browser yang tidak mengenal type=month merendernya sebagai kotak teks kosong, jadi
+  // periodenya diambil alih sepasang dropdown — tetap tanpa mengetik, tetap terkirim YYYY-MM.
+  if (el.type === 'month') return;
+  const bagian = (el.value || '').split('-');
+  el.classList.add('d-none');
+  const kotak = document.getElementById('fallbackPeriode');
+  kotak.classList.remove('d-none');
+  const fbBulan = document.getElementById('fbBulan'), fbTahun = document.getElementById('fbTahun');
+  if (bagian.length === 2) { fbTahun.value = bagian[0]; fbBulan.value = bagian[1]; }
+  const sinkron = () => { el.value = fbTahun.value + '-' + fbBulan.value; };
+  [fbBulan, fbTahun].forEach(s => s.addEventListener('change', sinkron));
+  sinkron();
+})();
+</script>
 <%- include('layout-footer') %>

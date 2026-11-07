@@ -8,6 +8,11 @@ const fs = require('fs');
 const db = require('./config/database');
 const SqliteSessionStore = require('./config/sessionStore');
 const initDB = require('./database/migrations/init');
+const { runBackup, backupDir, keepCount } = require('./scripts/backup-db');
+const { csv: buatCsv, jenis: jenisEkspor } = require('./scripts/export-csv');
+const { buatCadanganZip, daftarFileRekursif } = require('./scripts/cadangan-zip');
+const { statusEmail, kirimCadanganEmail, jadwalkanEmailCadangan } = require('./scripts/email-cadangan');
+const { buatTemplate: buatTemplateImpor, bacaDanRencanakan: imporRencanakan, terapkan: imporTerapkan } = require('./scripts/impor-produk');
 require('dotenv').config();
 
 initDB();
@@ -79,6 +84,9 @@ const formatWIB = (value, withTime = true) => {
         : { timeZone: WIB_ZONE, day: '2-digit', month: 'short', year: 'numeric' });
 };
 const todayWIB = () => new Date().toLocaleDateString('en-CA', { timeZone: WIB_ZONE });
+// Nama bulan Indonesia. Dipakai label periode gaji dan judul periode di laporan, supaya
+// "2026-11" dari pemilih bulan tidak pernah tampil mentah di muka pemilik toko.
+const NAMA_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
 const { isAuthenticated } = require('./middleware/auth');
 
@@ -356,11 +364,13 @@ app.post('/api/checkout', (req, res) => {
     }
 
     let discount = 0;
+    let voucherDipakai = null;
     if (voucherId && Number(voucherId) > 0) {
       const voucher = getVoucher.get(Number(voucherId));
       if (!voucher) throw new Error('Voucher tidak ditemukan atau sudah tidak aktif.');
       if (subtotal < (voucher.min_transaction || 0)) throw new Error('Minimal transaksi voucher ' + voucher.code + ' adalah Rp ' + (voucher.min_transaction || 0).toLocaleString('id-ID') + '.');
       discount = Math.min(voucher.value || 0, subtotal);
+      voucherDipakai = voucher;
     }
 
     const tax = Math.round((subtotal - discount) * taxRate / 100);
@@ -369,8 +379,9 @@ app.post('/api/checkout', (req, res) => {
     const dibayar = metode === 'QRIS' ? total : amount;
     if (dibayar < total) throw new Error('Uang pembayaran kurang Rp ' + (total - dibayar).toLocaleString('id-ID') + '.');
 
-    const sale = db.prepare('INSERT INTO sales (invoice_no, user_id, branch_id, subtotal, discount, tax, total, payment_method, payment_amount, return_amount, customer_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(invoiceNo, user.id, branchId, subtotal, discount, tax, total, metode, dibayar, dibayar - total, pelanggan ? pelanggan.id : null, 'LUNAS');
+    const sale = db.prepare('INSERT INTO sales (invoice_no, user_id, branch_id, subtotal, discount, tax, total, payment_method, payment_amount, return_amount, customer_id, status, voucher_id, voucher_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(invoiceNo, user.id, branchId, subtotal, discount, tax, total, metode, dibayar, dibayar - total, pelanggan ? pelanggan.id : null, 'LUNAS',
+        voucherDipakai ? voucherDipakai.id : null, voucherDipakai ? voucherDipakai.code : null);
 
     const insertItem = db.prepare('INSERT INTO sale_items (sale_id, product_id, qty, price, cogs, subtotal) VALUES (?, ?, ?, ?, ?, ?)');
 
@@ -379,6 +390,7 @@ app.post('/api/checkout', (req, res) => {
       adjustBranchStock(line.product.id, branchId, -line.qty, 'SALE', sale.lastInsertRowid, invoiceNo, user.id);
     }
     return { subtotal, discount, tax, total, branchName: branch.name,
+      voucherCode: voucherDipakai ? voucherDipakai.code : null,
       customerName: pelanggan ? pelanggan.name : null, customerCode: pelanggan ? pelanggan.code : null };
   });
   try {
@@ -405,7 +417,67 @@ app.get('/produk', isManagerOrAdmin, (req, res) => {
       FROM stock_per_branch spb JOIN branches b ON b.id = spb.branch_id ORDER BY b.id ASC`).all();
   const categories = db.prepare('SELECT * FROM categories').all();
   const branches = db.prepare('SELECT * FROM branches ORDER BY id ASC').all();
-  res.render('produk', { products, categories, stocks, branches, branchId });
+  res.render('produk', { products, categories, stocks, branches, branchId, imporPesan: req.query.impor || '', error: req.query.error || '' });
+});
+
+// Impor massal dari Excel. Berkasnya hanya dibaca di memori (tidak pernah ditulis ke disk
+// server) dan dibatasi 5 MB — cukup untuk ribuan baris produk.
+const uploadCsv = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+app.get('/produk/template', isManagerOrAdmin, (req, res) => {
+  const branches = db.prepare('SELECT * FROM branches ORDER BY id ASC').all();
+  const products = db.prepare('SELECT id, barcode, name, category_id, price_buy, price_sell, min_stock FROM products ORDER BY name ASC').all();
+  const stokByProduk = {};
+  db.prepare('SELECT product_id, branch_id, stock FROM stock_per_branch').all().forEach(s => {
+    (stokByProduk[s.product_id] = stokByProduk[s.product_id] || {})[s.branch_id] = s.stock;
+  });
+  const kategoriNama = (id) => { const c = db.prepare('SELECT name FROM categories WHERE id = ?').get(id); return c ? c.name : ''; };
+  const namaBerkas = 'template-produk-' + todayWIB() + '.csv';
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="' + namaBerkas + '"');
+  res.send(buatTemplateImpor({ branches, products, stokByProduk, kategoriNama }));
+});
+
+app.post('/produk/impor', isManagerOrAdmin, uploadCsv.single('berkas'), (req, res) => {
+  const gagal = (pesan) => res.redirect('/produk?error=' + encodeURIComponent(pesan));
+  const user = req.session.user;
+  if (!req.file) return gagal('Pilih berkas CSV dulu. Di Excel pakai menu Save As lalu pilih "CSV (Pemisah Titik-Koma) (*.csv)" — file .xlsx tidak bisa dibaca.');
+  if (!/\.csv$/i.test(req.file.originalname || '')) return gagal('Format berkas harus .csv, bukan .' + String(req.file.originalname).split('.').pop());
+
+  try {
+    const branches = db.prepare('SELECT * FROM branches ORDER BY id ASC').all();
+    const produkByBarcode = new Map(db.prepare("SELECT id, barcode FROM products WHERE IFNULL(barcode,'') <> ''").all().map(p => [String(p.barcode), p]));
+    const kategoriByName = new Map(db.prepare('SELECT id, name FROM categories').all().map(c => [String(c.name).trim().toLowerCase(), c.id]));
+    const hasil = imporRencanakan({
+      isi: req.file.buffer, branches, produkByBarcode, kategoriByName,
+      cabangBoleh: (branchId) => canAccessBranch(user, branchId)
+    });
+    // Semua-atau-tidak-sama-sekali: satu baris salah saja, tidak ada yang ditulis.
+    if (hasil.galat.length) {
+      const tampil = hasil.galat.slice(0, 15).join(' ');
+      const sisa = hasil.galat.length - Math.min(15, hasil.galat.length);
+      return gagal('Berkas tidak disimpan sama sekali. ' + tampil + (sisa > 0 ? ' ... ' + sisa + ' masalah lainnya.' : ''));
+    }
+    if (hasil.rencana.length === 0) return gagal('Berkas tidak punya baris data (baris yang diawali # dianggap petunjuk).');
+
+    const ringkas = imporTerapkan(db, {
+      user,
+      adjustBranchStock,
+      ensureStockRows: initDB.ensureStockRows,
+      buatBarcode: () => '899' + Math.floor(1000000000 + Math.random() * 9000000000)
+    }, hasil);
+    console.log('[impor-produk] ' + user.username + ': baru=' + ringkas.baru + ' ubah=' + ringkas.ubah + ' stok=' + ringkas.stok + ' kategori=' + ringkas.kategori);
+    const pesan = [
+      ringkas.baru ? ringkas.baru + ' produk baru' : '',
+      ringkas.ubah ? ringkas.ubah + ' produk diperbarui' : '',
+      ringkas.stok ? ringkas.stok + ' penyesuaian stok' : '',
+      ringkas.kategori ? ringkas.kategori + ' kategori baru' : ''
+    ].filter(Boolean).join(', ');
+    res.redirect('/produk?impor=' + encodeURIComponent(pesan || 'tidak ada yang berubah'));
+  } catch (err) {
+    console.error('[impor-produk] gagal', err);
+    res.status(500).send('Gagal membaca berkas: ' + err.message);
+  }
 });
 app.post('/produk/add', isManagerOrAdmin, (req, res) => {
     try {
@@ -805,11 +877,19 @@ app.post('/pengeluaran/delete', isManagerOrAdmin, (req, res) => {
 app.get('/penggajian', isAdmin, (req, res) => {
     const users = db.prepare('SELECT id, name, role FROM users').all();
     const payrolls = db.prepare('SELECT p.*, u.name as user_name FROM payroll p LEFT JOIN users u ON p.user_id = u.id ORDER BY p.id DESC').all();
-    res.render('penggajian', { users, payrolls });
+    const bulanIni = todayWIB().slice(0, 7);
+    res.render('penggajian', { users, payrolls, bulanIni, namaBulan: NAMA_BULAN, error: req.query.error || '' });
 });
 app.post('/penggajian/add', isAdmin, (req, res) => {
     try {
-        db.prepare('INSERT INTO payroll (user_id, amount, month_year, notes) VALUES (?, ?, ?, ?)').run(req.body.user_id, req.body.amount, req.body.month_year, req.body.notes);
+        // Pemilih bulan mengirim 'YYYY-MM'; yang tersimpan tetap label manusia seperti baris-baris
+        // lama, jadi tidak ada dua format periode yang bercampur di tabel.
+        const m = /^(\d{4})-(\d{2})$/.exec(String(req.body.month_year || '').trim());
+        if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) {
+            return res.redirect('/penggajian?error=' + encodeURIComponent('Periode gaji belum dipilih. Pakai pemilih Bulan & Tahun, jangan diketik.'));
+        }
+        const periode = NAMA_BULAN[Number(m[2]) - 1] + ' ' + m[1];
+        db.prepare('INSERT INTO payroll (user_id, amount, month_year, notes) VALUES (?, ?, ?, ?)').run(req.body.user_id, req.body.amount, periode, req.body.notes);
         res.redirect('/penggajian');
     } catch (err) { res.status(500).send(err.message); }
 });
@@ -820,6 +900,15 @@ app.post('/penggajian/delete', isAdmin, (req, res) => {
 // VOUCHER (Admin Only)
 app.get('/voucher', isAdmin, (req, res) => {
     const vouchers = db.prepare('SELECT * FROM vouchers ORDER BY id DESC').all();
+    // Pemakaian dihitung sekali untuk semua voucher (bukan query per baris) supaya halaman ini
+    // tidak melambat mengikuti jumlah nota. Nota yang dibatalkan tidak dihitung.
+    const pemakaian = db.prepare("SELECT voucher_id, COUNT(*) AS tx, COALESCE(SUM(discount), 0) AS diskon FROM sales WHERE voucher_id IS NOT NULL AND COALESCE(status, '') <> 'VOID' GROUP BY voucher_id").all();
+    const peta = new Map(pemakaian.map(p => [p.voucher_id, p]));
+    vouchers.forEach(v => {
+        const p = peta.get(v.id) || {};
+        v.dipakai = p.tx || 0;
+        v.total_diskon = p.diskon || 0;
+    });
     res.render('voucher', { vouchers });
 });
 app.post('/voucher/add', isAdmin, (req, res) => {
@@ -869,7 +958,7 @@ app.get('/laporan', (req, res) => {
     const totalPages = Math.max(1, Math.ceil(jumlahBaris / PAGE_SIZE));
     const page = Math.min(Math.max(Number(req.query.page) || 1, 1), totalPages);
 
-    const ringkasan = db.prepare("SELECT COUNT(*) AS jumlah, COALESCE(SUM(s.total), 0) AS omzet, COALESCE(SUM(s.tax), 0) AS pajak FROM sales s " + whereAktif).get(...whereParams);
+    const ringkasan = db.prepare("SELECT COUNT(*) AS jumlah, COALESCE(SUM(s.total), 0) AS omzet, COALESCE(SUM(s.tax), 0) AS pajak, COALESCE(SUM(s.discount), 0) AS diskon, SUM(CASE WHEN COALESCE(s.discount, 0) > 0 THEN 1 ELSE 0 END) AS nota_diskon FROM sales s " + whereAktif).get(...whereParams);
     const hpp = db.prepare(`SELECT COALESCE(SUM(COALESCE(NULLIF(si.cogs, 0), p.price_buy, 0) * si.qty), 0) AS cogs
         FROM sale_items si
         LEFT JOIN products p ON p.id = si.product_id
@@ -888,6 +977,27 @@ app.get('/laporan', (req, res) => {
     // semuanya milik toko. Baris ini menghitung omset setelah pajak periode itu.
     const totalPajak = ringkasan.pajak;
     const omsetBersihPajak = totalRp - totalPajak;
+    const totalDiskon = ringkasan.diskon;
+    const notaDiskon = ringkasan.nota_diskon || 0;
+
+    // Rekap diskon per kasir/cabang dan per kode voucher. Ini alat deteksinya: diskon yang
+    // dipakai curang biasanya pola, bukan satu nota — misalnya satu kasir memberi potongan
+    // di hampir setiap nota. Transaksi VOID dikecualikan supaya tidak dihitung dua kali.
+    const rekapKasir = db.prepare(`SELECT COALESCE(u.name, 'Admin') AS kasir, COALESCE(b.name, '-') AS cabang,
+            COUNT(*) AS tx, COALESCE(SUM(s.subtotal), 0) AS subtotal,
+            SUM(CASE WHEN COALESCE(s.discount, 0) > 0 THEN 1 ELSE 0 END) AS tx_diskon,
+            COALESCE(SUM(s.discount), 0) AS diskon
+        FROM sales s
+        LEFT JOIN users u ON s.user_id = u.id
+        LEFT JOIN branches b ON s.branch_id = b.id ` + whereAktif + `
+        GROUP BY s.user_id, s.branch_id
+        HAVING diskon > 0
+        ORDER BY diskon DESC`).all(...whereParams);
+    const rekapVoucher = db.prepare(`SELECT COALESCE(s.voucher_code, '(tanpa kode voucher)') AS kode,
+            COUNT(*) AS tx, COALESCE(SUM(s.discount), 0) AS diskon
+        FROM sales s ` + whereAktif + ` AND COALESCE(s.discount, 0) > 0
+        GROUP BY kode
+        ORDER BY diskon DESC`).all(...whereParams);
 
     let expWhereConditions = [];
     const expParams = [];
@@ -913,7 +1023,6 @@ app.get('/laporan', (req, res) => {
 
     // Struk tidak boleh berisi token filter (BULAN_INI) karena pemilik toko harus menebak
     // maksudnya. Tanggal diambil dari sumber yang sama dengan WHERE di atas (WIB).
-    const NAMA_BULAN = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
     const hariIni = todayWIB();
     const tglPendek = (stamp) => stamp.slice(8, 10) + '/' + stamp.slice(5, 7);
     const tglPanjang = (stamp) => stamp.slice(8, 10) + '/' + stamp.slice(5, 7) + '/' + stamp.slice(0, 4);
@@ -946,7 +1055,7 @@ app.get('/laporan', (req, res) => {
     const totalPcs = harian.reduce((acc, r) => acc + r.pcs, 0);
 
     const customers = db.prepare('SELECT id, code, name FROM customers ORDER BY name COLLATE NOCASE ASC').all();
-    res.render('laporan', { sales, filter, member, customers, totalRp, totalTx, totalCogs, totalPcs, totalPajak, omsetBersihPajak, labaKotor, expTotal, payTotal, labaBersih, settings, page, totalPages, jumlahBaris, pageSize: PAGE_SIZE, periodeLabel, harian, judulRincian });
+    res.render('laporan', { sales, filter, member, customers, totalRp, totalTx, totalCogs, totalPcs, totalPajak, omsetBersihPajak, totalDiskon, notaDiskon, rekapKasir, rekapVoucher, labaKotor, expTotal, payTotal, labaBersih, settings, page, totalPages, jumlahBaris, pageSize: PAGE_SIZE, periodeLabel, harian, judulRincian });
 });
 
 // PEMBATALAN / RETUR PENJUALAN
@@ -1039,7 +1148,48 @@ app.post('/pengguna/delete', isManagerOrAdmin, (req, res) => {
 // PENGATURAN TOKO
 app.get('/pengaturan', isAdmin, (req, res) => {
     const settings = db.prepare('SELECT * FROM settings LIMIT 1').get();
-    res.render('pengaturan', { settings });
+    res.render('pengaturan', {
+        settings,
+        email: statusEmail(db),
+        error: req.query.error || null,
+        info: req.query.info || null
+    });
+});
+
+// Pengaturan cadangan harian ke email. Sengaja formulir sendiri, bukan ikut
+// /pengaturan/update: kolom ini boleh dikosongkan (mati), dan pola COALESCE pada
+// formulir toko justru membuat nilai null tidak pernah bisa disimpan.
+app.post('/pengaturan/email', isAdmin, (req, res) => {
+    try {
+        const alamat = String(req.body.backup_email || '').trim();
+        if (alamat && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(alamat)) {
+            return res.redirect('/pengaturan?error=' + encodeURIComponent('Alamat email "' + alamat + '" tidak layak, jadi tidak disimpan.'));
+        }
+        const jamRaw = Number.parseInt(req.body.backup_hour, 10);
+        const jam = Number.isInteger(jamRaw) && jamRaw >= 0 && jamRaw <= 23 ? jamRaw : 22;
+        db.prepare('UPDATE settings SET backup_email = ?, backup_hour = ? WHERE id = 1').run(alamat || null, jam);
+        res.redirect('/pengaturan?info=' + encodeURIComponent(alamat
+            ? 'Cadangan harian aktif: tiap hari pukul ' + String(jam).padStart(2, '0') + ' WIB ke ' + alamat + '.'
+            : 'Cadangan harian ke email dimatikan.'));
+    } catch (err) { res.status(500).send(err.message); }
+});
+
+// Kirim sekarang juga, tanpa menunggu jam. Kegagalan dikirim sebagai pesan, bukan
+// halaman error, karena server email pihak ketiga memang sering menolak sesaat.
+app.post('/pengaturan/email-uji', isAdmin, async (req, res) => {
+    const kembali = (key, pesan) => res.redirect('/pengaturan?' + key + '=' + encodeURIComponent(pesan));
+    try {
+        const hasil = await kirimCadanganEmail({
+            db, formatWIB, uploadsDir, paksa: true,
+            ke: String(req.body.backup_email || '').trim() || undefined
+        });
+        if (!hasil.ok && hasil.dilewati) return kembali('error', hasil.pesan);
+        return kembali(hasil.ok ? 'info' : 'error', hasil.ok
+            ? 'Uji kirim berhasil: ' + hasil.pesan + ' (' + hasil.ukuranMb + ' MB).'
+            : 'Uji kirim gagal: ' + hasil.pesan);
+    } catch (err) {
+        return kembali('error', 'Uji kirim gagal: ' + err.message);
+    }
 });
 
 app.post('/pengaturan/update', isAdmin, upload.single('logo'), (req, res) => {
@@ -1059,6 +1209,107 @@ app.post('/pengaturan/update', isAdmin, upload.single('logo'), (req, res) => {
     } catch (err) { res.status(500).send(err.message); }
 });
 
+// ZONA BERBAHAYA — penghapusan data bertingkat, khusus Administrator.
+//
+// Tiga aksi dari yang paling aman sampai paling merusak. Syaratnya identik untuk
+// ketiganya dan memang sengaja dibuat melelahkan: cadangan harus berhasil lebih dulu,
+// frasa konfirmasi diketik persis, dan sandi login dicek ulang. Semua DELETE dibungkus
+// satu transaksi supaya tidak pernah ada keadaan "setengah terhapus".
+const HAPUS_DATA = {
+    transaksi: {
+        frasa: 'HAPUS TRANSAKSI',
+        ringkas: 'Riwayat penjualan dikosongkan; produk, harga, stok, cabang, dan pengguna tetap utuh.',
+        jalan: () => ({
+            sale_items: db.prepare('DELETE FROM sale_items').run().changes,
+            sales: db.prepare('DELETE FROM sales').run().changes,
+            // Jurnal stok yang murni akibat nota ikut dihapus karena tidak lagi punya
+            // rujukan; opname, penyesuaian manual, dan transfer tetap tersimpan.
+            stock_movements: db.prepare("DELETE FROM stock_movements WHERE type IN ('SALE','VOID')").run().changes
+        })
+    },
+    produk: {
+        frasa: 'HAPUS PRODUK',
+        ringkas: 'Daftar produk, stok per cabang, dan jurnal stok dihapus; transaksi lama dibiarkan.',
+        // sale_items.product_id tidak punya foreign key, jadi kalau produk dihapus sementara
+        // nota masih ada, laporan lama akan menampilkan baris barang yang tidak pernah ada.
+        prasyarat: () => {
+            const n = db.prepare('SELECT COUNT(*) AS c FROM sales').get().c;
+            return n === 0 ? null
+                : `Masih ada ${n} transaksi. Jalankan "Kosongkan riwayat transaksi" lebih dulu, atau biarkan datanya.`;
+        },
+        jalan: () => ({
+            stock_transfer_items: db.prepare('DELETE FROM stock_transfer_items').run().changes,
+            stock_transfers: db.prepare('DELETE FROM stock_transfers').run().changes,
+            stock_movements: db.prepare('DELETE FROM stock_movements').run().changes,
+            stock_per_branch: db.prepare('DELETE FROM stock_per_branch').run().changes,
+            products: db.prepare('DELETE FROM products').run().changes
+        })
+    },
+    pabrik: {
+        frasa: 'RESET PABRIK',
+        ringkas: 'Seluruh data operasional dihapus; cabang, akun pengguna, pengaturan toko, dan jejak audit tetap ada.',
+        // Cabang dan pengguna sengaja tidak disentuh: tanpanya aplikasi tidak bisa login
+        // lagi dan satu-satunya jalan kembali adalah mengedit database dengan tangan.
+        jalan: () => ({
+            sale_items: db.prepare('DELETE FROM sale_items').run().changes,
+            sales: db.prepare('DELETE FROM sales').run().changes,
+            stock_transfer_items: db.prepare('DELETE FROM stock_transfer_items').run().changes,
+            stock_transfers: db.prepare('DELETE FROM stock_transfers').run().changes,
+            stock_movements: db.prepare('DELETE FROM stock_movements').run().changes,
+            stock_per_branch: db.prepare('DELETE FROM stock_per_branch').run().changes,
+            products: db.prepare('DELETE FROM products').run().changes,
+            categories: db.prepare('DELETE FROM categories').run().changes,
+            customers: db.prepare('DELETE FROM customers').run().changes,
+            vouchers: db.prepare('DELETE FROM vouchers').run().changes,
+            expenses: db.prepare('DELETE FROM expenses').run().changes,
+            stock_opnames: db.prepare('DELETE FROM stock_opnames').run().changes,
+            payroll: db.prepare('DELETE FROM payroll').run().changes
+        })
+    }
+};
+
+app.post('/pengaturan/hapus-data', isAdmin, async (req, res) => {
+    const kembali = (key, pesan) => res.redirect(`/pengaturan?${key}=` + encodeURIComponent(pesan));
+    const def = HAPUS_DATA[req.body.aksi];
+    if (!def) return kembali('error', 'Aksi penghapusan tidak dikenali.');
+
+    const keberatan = [];
+    // Cap letters tidak ikut dihitung; yang harus persis adalah kata-katanya.
+    if (String(req.body.konfirmasi || '').trim().toUpperCase() !== def.frasa) {
+        keberatan.push(`Frasa konfirmasi harus diketik persis: ${def.frasa}.`);
+    }
+    const akun = db.prepare('SELECT password FROM users WHERE id = ?').get(req.session.user.id);
+    if (!akun || !bcrypt.compareSync(String(req.body.password || ''), akun.password)) {
+        // Sandi akun yang sedang login, bukan sandi baru.
+        keberatan.push('Sandi akun Anda tidak cocok.');
+    }
+    if (def.prasyarat) {
+        const halang = def.prasyarat();
+        if (halang) keberatan.push(halang);
+    }
+    if (keberatan.length > 0) return kembali('error', 'Penghapusan dibatalkan. ' + keberatan.join(' '));
+
+    const hasil = await runBackup();
+    if (!hasil.ok) {
+        return kembali('error', 'Penghapusan dibatalkan karena cadangan gagal dibuat: '
+            + (hasil.skipped ? 'cadangan otomatis masih berjalan, ulangi sebentar lagi.'
+                : (hasil.error || 'pemeriksaan integritas menghasilkan ' + hasil.integrity)));
+    }
+
+    try {
+        const rincian = db.transaction(() => def.jalan())();
+        const baris = Object.values(rincian).reduce((a, b) => a + b, 0);
+        db.prepare(`INSERT INTO data_actions (user_id, aksi, backup_file, baris_terhapus, keterangan)
+            VALUES (?, ?, ?, ?, ?)`)
+            .run(req.session.user.id, req.body.aksi, path.basename(hasil.file), baris, def.ringkas);
+        console.log(`[hapus-data] ${req.body.aksi} oleh user ${req.session.user.id}: ${baris} baris, cadangan ${path.basename(hasil.file)}`);
+        return kembali('info', `Selesai: ${baris} baris dihapus (${Object.entries(rincian).map(([t, n]) => `${t} ${n}`).join(', ')}). `
+            + `Salinan sebelum hapus tersimpan di ${path.basename(hasil.file)}.`);
+    } catch (err) {
+        return kembali('error', 'Penghapusan gagal dan seluruh perubahan dibatalkan: ' + err.message);
+    }
+});
+
 app.get('/pengaturan/voucher', isAdmin, (req, res) => {
     const settings = db.prepare('SELECT * FROM settings LIMIT 1').get();
     res.render('pengaturan-voucher', { settings, error: req.query.error || null, saved: req.query.saved === '1' });
@@ -1075,10 +1326,93 @@ app.post('/pengaturan/voucher/update', isAdmin, (req, res) => {
     } catch (err) { res.status(500).send(err.message); }
 });
 
+// CADANGAN & DATA
+//
+// Semua jalur di blok ini khusus Administrator dan tidak mengubah apa pun: yang ZIP
+// hanya membaca snapshot hasil backup(), sisanya ekspor baca-saja.
+const uploadsDir = path.join(__dirname, 'public', 'uploads');
+
+const formatUkuran = (byte) => {
+    if (!Number.isFinite(byte) || byte <= 0) return '0 KB';
+    const satuan = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.min(Math.floor(Math.log(byte) / Math.log(1024)), satuan.length - 1);
+    return (byte / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + satuan[i];
+};
+
+// Nama tabel ditulis di sini, bukan datang dari input pengguna, jadi string SQLnya aman.
+const TABEL_CADANGAN = ['sales', 'sale_items', 'products', 'stock_per_branch', 'stock_movements',
+    'branches', 'users', 'categories', 'customers', 'vouchers', 'expenses', 'stock_opnames', 'payroll'];
+
+app.get('/backup', isAdmin, (req, res) => {
+    const jumlah = {};
+    for (const t of TABEL_CADANGAN) jumlah[t] = db.prepare('SELECT COUNT(*) AS c FROM ' + t).get().c;
+
+    const berkas = fs.existsSync(backupDir)
+        ? fs.readdirSync(backupDir)
+            .filter((f) => /^kasir-\d{8}-\d{6}\.db$/.test(f))
+            .map((f) => {
+                const stat = fs.statSync(path.join(backupDir, f));
+                return { nama: f, ukuran: formatUkuran(stat.size), waktu: formatWIB(stat.mtime) };
+            })
+            .sort((a, b) => b.nama.localeCompare(a.nama))
+        : [];
+
+    const berkasUpload = daftarFileRekursif(uploadsDir);
+    const ukuranUpload = berkasUpload.reduce((acc, f) => acc + fs.statSync(f.penuh).size, 0);
+
+    const aksi = db.prepare(`SELECT da.*, u.name AS pelaksana FROM data_actions da
+        LEFT JOIN users u ON u.id = da.user_id ORDER BY da.id DESC LIMIT 5`).all();
+
+    res.render('backup', {
+        jumlah, berkas, aksi,
+        jumlahUpload: berkasUpload.length,
+        ukuranUpload: formatUkuran(ukuranUpload),
+        retensi: keepCount,
+        error: req.query.error || null,
+        info: req.query.info || null
+    });
+});
+
+// Satu tombol untuk semua: snapshot database (checkpoint + integrity_check), gambar
+// logo/QRIS di uploads, dan ekspor CSV. Perakitan arsipnya ada di scripts/cadangan-zip.js
+// karena cadangan harian ke email mengirim arsip yang persis sama.
+app.post('/backup/unduh-zip', isAdmin, async (req, res) => {
+    try {
+        const arsip = await buatCadanganZip({ db, formatWIB, uploadsDir });
+        if (!arsip.ok) return res.redirect('/backup?error=' + encodeURIComponent(arsip.pesan));
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="${arsip.namaBerkas}"`);
+        res.send(arsip.buffer);
+    } catch (err) {
+        res.status(500).send(err.message);
+    }
+});
+
+// Ekspor CSV baca-saja. Nama jenis divalidasi lewat kunci objek, jadi tidak ada jalur
+// input bebas yang masuk ke query.
+app.get('/backup/ekspor/:nama', isAdmin, (req, res) => {
+    const j = jenisEkspor[req.params.nama];
+    if (!j) return res.status(404).send('Jenis ekspor tidak dikenal.');
+    const isi = buatCsv(j.kolom, j.ambil(db, formatWIB));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${j.nama}.csv"`);
+    res.send(isi);
+});
+
+// Berkas .db hasil backup otomatis. Pola namanya ketat: siapa pun yang mengirim nama
+// lain (termasuk ../) langsung ditolak sebelum ada satu pun pemanggilan fs.
+app.get('/backup/berkas/:nama', isAdmin, (req, res) => {
+    const nama = req.params.nama;
+    if (!/^kasir-\d{8}-\d{6}\.db$/.test(nama)) return res.status(400).send('Nama berkas tidak valid.');
+    const penuh = path.join(backupDir, nama);
+    if (!fs.existsSync(penuh)) return res.status(404).send('Berkas cadangan tidak ditemukan.');
+    res.download(penuh, nama);
+});
+
 
 const PORT = process.env.PORT || 3000;
-const { runBackup, backupDir, keepCount } = require('./scripts/backup-db');
 const BACKUP_INTERVAL_MIN = Number(process.env.BACKUP_INTERVAL_MIN ?? 60);
+const EMAIL_CEK_MIN = Number(process.env.EMAIL_BACKUP_INTERVAL_MIN ?? 5);
 
 app.listen(PORT, () => {
     console.log('[SERVER] KASIR POS berjalan di http://localhost:' + PORT);
@@ -1086,5 +1420,12 @@ app.listen(PORT, () => {
         runBackup();
         setInterval(runBackup, BACKUP_INTERVAL_MIN * 60000).unref();
         console.log(`[backup] otomatis tiap ${BACKUP_INTERVAL_MIN} menit, simpan ${keepCount} terbaru di ${backupDir} (BACKUP_INTERVAL_MIN=0 untuk mematikan)`);
+    }
+    if (EMAIL_CEK_MIN > 0) {
+        jadwalkanEmailCadangan({ db, formatWIB, uploadsDir, intervalMenit: EMAIL_CEK_MIN });
+        const s = statusEmail(db);
+        console.log('[email-cadangan] dicek tiap ' + EMAIL_CEK_MIN + ' menit; tujuan '
+            + (s.aktif ? s.email + ' pukul ' + String(s.jam).padStart(2, '0') + ' WIB' : 'belum diisi')
+            + '; SMTP ' + (s.smtpSiap ? 'terkonfigurasi (' + s.smtpHost + ':' + s.smtpPort + ', ' + s.smtpMetode + ')' : 'belum ada di .env'));
     }
 });
