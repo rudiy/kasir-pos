@@ -181,6 +181,24 @@ const initDB = () => {
   // dan tidak pernah menyentuh database, jadi arsip maupun salinan database aman.
   ensureColumn('settings', 'backup_email', 'TEXT');
   ensureColumn('settings', 'backup_hour', 'INTEGER DEFAULT 22');
+  // Kunci periode gaji. `month_year` tetap label manusia ("November 2026") untuk tampilan,
+  // tapi laporan tidak punya apa pun untuk menggantung kecuali kolom itu berisi teks bebas —
+  // dan sebelum kolom ini ada, gaji dibebankan ke TANGGAL INPUT, jadi gaji November yang
+  // diinput 3 Desember masuk laba-rugi Desember.
+  ensureColumn('payroll', 'period', 'TEXT');
+  // Backfill sekali untuk baris lama. Label yang tidak terbaca persis sengaja dibiarkan NULL:
+  // laporan akan jatuh ke bulan input untuk baris itu, yaitu perilaku sebelum perubahan ini,
+  // daripada mengarang kunci bulan dari teks yang tidak jelas maksudnya.
+  const NAMA_BULAN_LAMA = ['januari', 'februari', 'maret', 'april', 'mei', 'juni',
+    'juli', 'agustus', 'september', 'oktober', 'november', 'desember'];
+  for (const baris of db.prepare('SELECT id, month_year FROM payroll WHERE period IS NULL').all()) {
+    const c = /^([A-Za-z]+) (\d{4})$/.exec(String(baris.month_year || '').trim());
+    const ke = c ? NAMA_BULAN_LAMA.indexOf(c[1].toLowerCase()) : -1;
+    if (ke >= 0) {
+      db.prepare('UPDATE payroll SET period = ? WHERE id = ?')
+        .run(c[2] + '-' + String(ke + 1).padStart(2, '0'), baris.id);
+    }
+  }
 
   const checkBranch = db.prepare('SELECT * FROM branches WHERE id = 1').get();
   if(!checkBranch) {

@@ -281,15 +281,27 @@ Kodenya di `scripts/impor-produk.js`, rutenya `GET /produk/template` dan `POST /
   menjalankan skrip bawaan halaman setelah `type` dipaksa `text`: input hilang dari layout, select
   muncul dan terpilih November/2026, nilai yang terkirim tetap `2026-11`.
 - Server hanya menerima keluaran pemilih. `/penggajian/add` mencocokkan `^(\d{4})-(\d{2})$` dengan
-  bulan 01–12; nilai lain **tidak ditulis sama sekali** dan halaman dibuka lagi lewat
+  bulan 01–12, lalu ikut memeriksa **karyawan** (`user_id` harus ada di tabel `users` — kolomnya
+  sengaja tidak diberi foreign key karena baris lama boleh menunjuk akun yang sudah dihapus, jadi
+  tanpa cek ini id karangan masuk diam-diam dan tabel gaji menampilkan nama kosong) dan **nominal**
+  (harus angka > 0, dibulatkan ke rupiah utuh supaya tabel tidak pernah menampilkan
+  `Rp 1.500.000,5`). Nilai yang ditolak **tidak ditulis sama sekali** dan halaman dibuka lagi lewat
   `/penggajian?error=...` sehingga pesannya tampil sebagai alert di atas tabel, bukan hilang diam-diam.
-- Yang tersimpan di `payroll.month_year` **tetap label bulan seperti biasa** (`November 2026`), bukan
-  `2026-11`. Tidak ada migrasi, tidak ada dua format campuran di satu kolom, dan badge periode di
-  tabel maupun laporan tidak berubah. Konversinya satu arah di route: angka pemilih → nama bulan dari
-  `NAMA_BULAN`, konstanta yang sama dipakai `/laporan` (duplikat lokalnya di situ sudah dihapus).
-- Perlu diketahui: `/laporan` menjumlahkan gaji dari kolom `date` (tanggal input), bukan dari
-  `month_year` (periode yang dipilih). Gaji berperiode "November 2025" yang diinput 3 Desember ikut
-  ke laba-rugi Desember. Perilaku ini tidak diubah di sini karena sudah berlaku sejak fitur gaji dibuat.
+- Yang tampil di tabel dan badge **tetap label bulan seperti biasa** (`November 2026`), bukan
+  `2026-11`, jadi tidak ada dua format campuran yang harus dibaca manusia. Konversinya satu arah di
+  route: angka pemilih → nama bulan dari `NAMA_BULAN`, konstanta yang sama dipakai `/laporan`
+  (duplikat lokalnya di situ sudah dihapus).
+- Di samping label itu ada kolom kunci `payroll.period` (`YYYY-MM`, `database/migrations/init.js`)
+  yang dipakai laporan. Baris lama di-backfill dari labelnya sekali jalan; label yang tidak terbaca
+  persis `NamaBulan YYYY` dibiarkan tanpa kunci dan jatuh ke perilaku lama, bukan dikarang kuncinya.
+- **Laporan membebankan gaji ke periodenya**, bukan ke tanggal input: gaji berperiode
+  "November 2026" yang baru diinput 3 Desember tetap masuk laba-rugi November
+  (`COALESCE(period, strftime('%Y-%m', date))` pada `/laporan?filter=bulan_ini`). Untuk
+  `filter=hari_ini` yang dipakai tetap tanggal input — satu bulan gaji tidak punya hari, jadi angka
+  hari ini berarti "uang gaji yang keluar hari ini", dan dashboard ikut menghitungnya begitu.
+  Ini perubahan angka yang terlihat: laporan bulan berjalan bisa tampak lebih kecil daripada
+  sebelumnya kalau gaji bulan itu baru dibayar bulan berikutnya (dan lebih besar kalau gaji bulan
+  lalu diinput sekarang).
 
 ## Label barcode
 Barang yang kemasannya tidak punya barcode tetap bisa discan di kasir kalau labelnya dicetak dari
@@ -766,7 +778,7 @@ kasir tetap bisa dipakai lewat alamat LAN, dengan struk QRIS dan harga yang ters
 - Storage: SQLite satu berkas di `database/kasir.db`, mode WAL, foreign key aktif.
 - Migrasi berjalan tiap start: tabel baru dibuat bila belum ada, dan kolom tambahan
   (`sales.subtotal/discount/tax`, `sales.customer_id`, `sales.voucher_id/voucher_code`,
-  `branches.qris_image`, `settings.tax_rate`, `settings.backup_email/backup_hour`) ditambahkan lewat
+  `branches.qris_image`, `settings.tax_rate`, `settings.backup_email/backup_hour`, `payroll.period`) ditambahkan lewat
   `ensureColumn` tanpa merusak data lama.
 - Sumber kebenaran stok adalah `stock_per_branch`, **bukan** `products.stock`. Setiap
   perubahan stok (penjualan, opname, koreksi, transfer) tercatat di `stock_movements`,

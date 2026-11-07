@@ -881,15 +881,26 @@ app.get('/penggajian', isAdmin, (req, res) => {
     res.render('penggajian', { users, payrolls, bulanIni, namaBulan: NAMA_BULAN, error: req.query.error || '' });
 });
 app.post('/penggajian/add', isAdmin, (req, res) => {
+    const salah = (pesan) => res.redirect('/penggajian?error=' + encodeURIComponent(pesan));
     try {
         // Pemilih bulan mengirim 'YYYY-MM'; yang tersimpan tetap label manusia seperti baris-baris
         // lama, jadi tidak ada dua format periode yang bercampur di tabel.
         const m = /^(\d{4})-(\d{2})$/.exec(String(req.body.month_year || '').trim());
         if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) {
-            return res.redirect('/penggajian?error=' + encodeURIComponent('Periode gaji belum dipilih. Pakai pemilih Bulan & Tahun, jangan diketik.'));
+            return salah('Periode gaji belum dipilih. Pakai pemilih Bulan & Tahun, jangan diketik.');
+        }
+        // payroll.user_id tidak punya foreign key (dan tidak boleh ditambah sekarang: baris lama
+        // bisa menunjuk akun yang sudah dihapus), jadi tanpa cek ini id karangan dari curl
+        // masuk diam-diam dan tabel gaji menampilkan nama kosong.
+        const karyawan = db.prepare('SELECT id FROM users WHERE id = ?').get(req.body.user_id);
+        if (!karyawan) return salah('Karyawan tidak ada di daftar. Pilih namanya, jangan kirim sendiri.');
+        const nominal = Number(req.body.amount);
+        if (!Number.isFinite(nominal) || nominal <= 0) {
+            return salah('Nominal gaji harus angka lebih dari 0, bukan "' + req.body.amount + '".');
         }
         const periode = NAMA_BULAN[Number(m[2]) - 1] + ' ' + m[1];
-        db.prepare('INSERT INTO payroll (user_id, amount, month_year, notes) VALUES (?, ?, ?, ?)').run(req.body.user_id, req.body.amount, periode, req.body.notes);
+        db.prepare('INSERT INTO payroll (user_id, amount, month_year, period, notes) VALUES (?, ?, ?, ?, ?)')
+            .run(karyawan.id, Math.round(nominal), periode, m[1] + '-' + m[2], req.body.notes);
         res.redirect('/penggajian');
     } catch (err) { res.status(500).send(err.message); }
 });
@@ -1014,7 +1025,16 @@ app.get('/laporan', (req, res) => {
     
     let payTotal = 0;
     if (user.role === 'Administrator') {
-        let payWhere = filter === 'hari_ini' ? "WHERE date(date, 'localtime') = date('now', 'localtime')" : (filter === 'bulan_ini' ? "WHERE strftime('%Y-%m', date, 'localtime') = strftime('%Y-%m', 'now', 'localtime')" : "");
+        // Gaji dibebankan ke PERIODE yang dipilih, bukan ke tanggal input: gaji "November 2026"
+        // yang baru diinput 3 Desember tetap milik November. Baris lama tanpa kunci periode
+        // (period NULL) jatuh ke bulan input, yaitu perilaku yang pemilik toko sudah kenal.
+        // Untuk filter "hari ini" tanggal input tetap dipakai — sebuah bulan gaji tidak punya
+        // hari, jadi angka hari ini memang berarti "uang gaji yang keluar hari ini".
+        let payWhere = filter === 'hari_ini'
+            ? "WHERE date(date, 'localtime') = date('now', 'localtime')"
+            : (filter === 'bulan_ini'
+                ? "WHERE COALESCE(period, strftime('%Y-%m', date, 'localtime')) = strftime('%Y-%m', 'now', 'localtime')"
+                : "");
         payTotal = db.prepare("SELECT SUM(amount) as total FROM payroll " + payWhere).get().total || 0;
     }
     
