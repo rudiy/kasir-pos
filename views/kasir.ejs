@@ -1,49 +1,80 @@
 <%- include('layout-header') %>
 <div class='row g-0 pos-stack'>
-  <div class='col-lg-8 p-3 bg-light'>
-    <div class='d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2'>
-      <div class='small text-muted'>Stok yang tampil &amp; berkurang: <strong><%= branch ? branch.name : 'cabang Anda' %></strong></div>
+  <% /* col-md, bukan col-lg: sejak 768px keranjang kembali jadi kolom di samping (lihat blok
+         kasir di style.css), dan di <= 767,98px kelas kolom ini toh tidak dipakai karena panelnya
+         jadi bilah tetap di bawah. */ %>
+  <div class='col-md-8 p-3 bg-light pos-produk-col'>
+    <div class='d-flex flex-wrap align-items-center gap-2 mb-2'>
+      <% /* Nama cabang bukan hiasan: angka stok di kartu dan pengurangannya berasal dari cabang ini,
+             dan kasir biasa (tanpa dropdown) satu-satunya jalan untuk tahu itu. Dulu kalimat utuh
+             "Stok yang tampil & berkurang: <nama>" yang di HP turun jadi dua baris di atas pencarian;
+             sekarang satu chip, keterangannya pindah ke title. */ %>
+      <span class='kasir-cabang' title='Stok yang tampil &amp; berkurang dari cabang ini'>
+        <i class='bi bi-geo-alt-fill' aria-hidden='true'></i><%= branch ? branch.name : 'cabang Anda' %>
+      </span>
       <% if (isAdmin) { %>
-        <select id='branchSwitcher' class='form-select form-select-sm' style='max-width: 220px;'>
+        <select id='branchSwitcher' class='form-select form-select-sm kasir-cabang-pilih' aria-label='Ganti cabang'>
           <% branches.forEach(b => { %><option value='<%= b.id %>' <%= b.id === branch.id ? "selected" : "" %>><%= b.name %></option><% }) %>
         </select>
       <% } %>
     </div>
-    <input type='text' id='barcode-input' class='form-control mb-2 p-3 shadow-sm' placeholder='Scan Barcode atau Cari Produk (F2)...' autofocus>
-    <div class='d-flex justify-content-end mb-2' id='produkTampilanBar'>
-      <div class='small text-muted me-2 align-self-center'>Tampilan produk:</div>
-      <div class='btn-group btn-group-sm' role='group' aria-label='Tampilan daftar produk'>
-        <button type='button' class='btn btn-secondary' id='btnTampilanGrid' onclick='setTampilanProduk("grid")'><i class='bi bi-grid-3x3-gap-fill me-1'></i>Grid</button>
-        <button type='button' class='btn btn-outline-secondary' id='btnTampilanDaftar' onclick='setTampilanProduk("daftar")'><i class='bi bi-list-ul me-1'></i>Daftar</button>
-      </div>
+    <div class='input-group input-group-lg kasir-cari mb-2'>
+      <span class='input-group-text bg-white' aria-hidden='true'><i class='bi bi-search'></i></span>
+      <input type='text' id='barcode-input' class='form-control shadow-sm'
+             placeholder='Scan Barcode atau Cari Produk (F2)...' autocomplete='off' autocapitalize='off' spellcheck='false'>
+      <button type='button' id='btnScan' class='btn btn-primary shadow-sm' onclick='bukaPemindai()'
+              title='Pindai barcode dengan kamera' aria-label='Pindai barcode dengan kamera' aria-haspopup='dialog'>
+        <i class='bi bi-camera-fill'></i><span class='d-none d-sm-inline ms-1'>Scan</span>
+      </button>
     </div>
-    <div class='row g-2' id='product-grid'>
-      <% products.forEach(p => { %>
-        <div class='col-6 col-sm-4 col-xl-3'>
-          <div class='card product-card h-100' data-product='<%= encodeURIComponent(JSON.stringify(p)) %>' onclick='addToCartFromData(this)'>
-            <div class='card-body text-center p-2'>
-              <div class='produk-nama'>
-                <h6 class='card-title text-truncate'><%= p.name %></h6>
-                <% if (p.barcode) { %><small class='produk-kode'><%= p.barcode %></small><% } %>
+    <% /* Katalog digeser mendatar per halaman sampai 991,98px (lihat .produk-slider di style.css),
+           jadi produk dipecah rata 12 kartu per slide sejak render: tanpa JavaScript pun susunannya
+           sudah benar, dan di layar >= 992px slide-nya hanya menumpuk seperti grid biasa. */ %>
+    <div class='produk-slider' id='product-grid'>
+      <% for (let awal = 0; awal < products.length; awal += 12) { %>
+        <div class='produk-slide row g-2'>
+          <% products.slice(awal, awal + 12).forEach(p => { %>
+            <div class='produk-kol col-6 col-sm-4 col-xl-3'>
+              <div class='card product-card h-100' data-product='<%= encodeURIComponent(JSON.stringify(p)) %>' onclick='addToCartFromData(this)'>
+                <div class='card-body text-center p-2'>
+                  <div class='produk-nama'>
+                    <h6 class='card-title text-truncate'><%= p.name %></h6>
+                    <% if (p.barcode) { %><small class='produk-kode'><%= p.barcode %></small><% } %>
+                  </div>
+                  <p class='text-success fw-bold mb-0'>Rp <%= p.price_sell.toLocaleString('id-ID') %></p>
+                  <small class='text-muted'>Stok: <%= p.stock %></small>
+                </div>
               </div>
-              <p class='text-success fw-bold mb-0'>Rp <%= p.price_sell.toLocaleString('id-ID') %></p>
-              <small class='text-muted'>Stok: <%= p.stock %></small>
             </div>
-          </div>
+          <% }) %>
         </div>
-      <% }) %>
+      <% } %>
     </div>
+    <div class='produk-indikator' id='produkIndikator' aria-live='polite'></div>
   </div>
-  <div class='col-lg-4 pos-cart-panel d-flex flex-column'>
+  <div class='col-md-4 pos-cart-panel' id='cartPanel'>
+    <div class='keranjang-kepala'>
+      <span class='fw-bold'><i class='bi bi-bag-check me-1'></i>Keranjang <span class='badge bg-primary cart-count'>0</span></span>
+      <button type='button' class='btn btn-sm btn-light' onclick='tutupKeranjang()' aria-label='Tutup keranjang'><i class='bi bi-x-lg'></i></button>
+    </div>
     <div class='p-3 bg-white flex-grow-1' id='cart-items'>
       <div class='text-center text-muted mt-5'>Keranjang Kosong</div>
     </div>
     <div class='p-3 bg-light border-top pos-checkout-bar'>
-      <div class='d-flex justify-content-between mb-1 small'><span>Subtotal</span><span id='cart-subtotal'>Rp 0</span></div>
-      <div class='d-flex justify-content-between mb-1 small text-danger' id='cart-discount-row' style='display:none'><span>Diskon</span><span id='cart-discount'>Rp 0</span></div>
-      <div class='d-flex justify-content-between mb-1 small' id='cart-tax-row' style='display:none'><span>Pajak (<span id='cart-tax-rate'>0</span>%)</span><span id='cart-tax'>Rp 0</span></div>
-      <div class='d-flex justify-content-between'><strong>Total:</strong><strong class='fs-4 text-primary' id='cart-total'>Rp 0</strong></div>
-      <button class='btn btn-success w-100 py-3 fw-bold' onclick='showPaymentModal()'>BAYAR (F4)</button>
+      <button type='button' class='keranjang-handle' onclick='bukaKeranjang()' aria-controls='cartPanel' aria-expanded='false'>
+        <span><i class='bi bi-bag-check me-1'></i>Keranjang</span>
+        <span class='badge bg-primary cart-count'>0</span>
+        <i class='bi bi-chevron-up'></i>
+      </button>
+      <div class='rincian-keranjang'>
+        <div class='d-flex justify-content-between mb-1 small'><span>Subtotal</span><span id='cart-subtotal'>Rp 0</span></div>
+        <div class='d-flex justify-content-between mb-1 small text-danger' id='cart-discount-row' style='display:none'><span>Diskon</span><span id='cart-discount'>Rp 0</span></div>
+        <div class='d-flex justify-content-between mb-1 small' id='cart-tax-row' style='display:none'><span>Pajak (<span id='cart-tax-rate'>0</span>%)</span><span id='cart-tax'>Rp 0</span></div>
+      </div>
+      <div class='total-bayar d-flex align-items-center justify-content-between gap-2'>
+        <div class='d-flex align-items-baseline gap-2'><strong>Total:</strong><strong class='fs-4 text-primary' id='cart-total'>Rp 0</strong></div>
+        <button class='btn btn-success py-3 fw-bold' onclick='showPaymentModal()'>BAYAR (F4)</button>
+      </div>
     </div>
   </div>
 </div>
@@ -115,6 +146,26 @@
 <div id='print-area' style='display:none;'></div>
 <div id='qris-besar' style='display:none;' onclick='tutupQrisBesar()'></div>
 
+<% /* Pemindai kamera. Dua jalur, satu tombol:
+       - viewfinder langsung (butuh secure context: https tunnel atau localhost),
+       - ambil foto lewat kamera bawaan HP bila halaman dibuka lewat http://192.168.x.x,
+         karena browser menolak getUserMedia di konteks tidak aman.
+     Elemen #scan-video diisi <video> oleh pustaka, jadi tidak boleh diberi isi. */ %>
+<div class='scan-overlay is-hidden' id='scanOverlay' role='dialog' aria-modal='true' aria-label='Pindai barcode dengan kamera'>
+  <div class='scan-atas'>
+    <div class='scan-judul' id='scanJudul'>Arahkan barcode ke dalam bingkai</div>
+    <button type='button' class='btn btn-sm btn-light' onclick='tutupPemindai()' aria-label='Tutup pemindai'><i class='bi bi-x-lg'></i></button>
+  </div>
+  <div class='scan-video' id='scan-video'></div>
+  <div class='scan-status' id='scanStatus' aria-live='polite'></div>
+  <div class='scan-bawah'>
+    <button type='button' class='btn btn-outline-light' id='btnScanFoto' onclick='mulaiModeFoto()'><i class='bi bi-camera me-1'></i>Ambil foto barcode</button>
+    <div class='scan-kecil' id='scanPetunjuk'>Scan terus-menerus: tiap barcode yang terbaca langsung masuk keranjang.</div>
+  </div>
+</div>
+<input type='file' accept='image/*' capture='environment' id='scanFoto' class='d-none' aria-hidden='true' tabindex='-1'>
+
+<script src='/vendor/html5-qrcode/html5-qrcode.min.js'></script>
 <script>
 let cart = [];
 let cartSubtotal = 0;
@@ -124,6 +175,10 @@ let finalTotal = 0;
 const TAX_RATE = <%= Number(settings.tax_rate || 0) %>;
 const CURRENT_BRANCH = <%= branch ? branch.id : 'null' %>;
 const formatter = new Intl.NumberFormat('id-ID');
+// Nama produk masuk ke keranjang sebagai HTML (baris dibuat dengan string, sama seperti
+// sebelumnya), jadi karakter & < > " ' ditutup dulu supaya nama seperti "A<B \"x\"" tidak
+// merusak baris atau menyelipkan tag.
+const escHtml = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // Label di bawah harus sama persis dengan <option> datalist di atas, supaya hasil ketikan
 // bisa dicocokkan tegas. Karakter < di-escape agar nama pelanggan tidak menutup script.
 const CUSTOMERS = <%- JSON.stringify(customers.map(c => ({ id: c.id, label: [c.code, c.name, c.phone].filter(Boolean).join(' - ') }))).replace(/</g, '\\u003c') %>;
@@ -131,17 +186,27 @@ let customerIdTerpilih = null;
 
 function addToCartFromData(card) {
   try {
-    addToCart(JSON.parse(decodeURIComponent(card.dataset.product)));
+    const hasil = addToCart(JSON.parse(decodeURIComponent(card.dataset.product)));
+    if (hasil.status === 'stok-habis') alert('Stok ' + hasil.produk.name + ' tinggal ' + hasil.stok + ', keranjang sudah penuh.');
   } catch (err) {
     alert('Data produk tidak valid, muat ulang halaman.');
   }
 }
 
+//addToCart tidak lagi menampilkan alert sendiri: jalur scan memakai baris statusnya, supaya
+//dialog 'Stok tidak cukup' tidak muncul di atas layar pemindai untuk tiap barcode yang habis.
 function addToCart(product) {
   const exist = cart.find(i => i.id === product.id);
-  if(exist) { if(exist.qty < product.stock) exist.qty++; else alert('Stok tidak cukup!'); }
-  else { cart.push({...product, qty: 1}); }
+  let hasil;
+  if (exist) {
+    if (exist.qty < product.stock) { exist.qty++; hasil = { status: 'naik', produk: product, qty: exist.qty }; }
+    else hasil = { status: 'stok-habis', produk: product, stok: product.stock };
+  } else {
+    cart.push({ ...product, qty: 1 });
+    hasil = { status: 'baru', produk: product, qty: 1 };
+  }
   renderCart();
+  return hasil;
 }
 
 function updateQty(id, delta) {
@@ -152,18 +217,38 @@ function updateQty(id, delta) {
   renderCart();
 }
 
+function hapusBarang(id) {
+  cart = cart.filter(i => i.id !== id);
+  renderCart();
+}
+
 function renderCart() {
   const container = document.getElementById('cart-items');
   cartSubtotal = 0;
-  if(cart.length === 0) { container.innerHTML = '<div class="text-center text-muted mt-5">Keranjang Kosong</div>'; updateTotals(); return; }
+  const jumlah = cart.reduce((n, i) => n + i.qty, 0);
+  document.querySelectorAll('.cart-count').forEach(el => { el.textContent = jumlah; });
+  if(cart.length === 0) {
+    container.innerHTML = '<div class="text-center text-muted mt-5">Keranjang Kosong</div>';
+    // Bilah yang tersisa cuma total Rp 0 + BAYAR: kalau keranjang dibuka dalam keadaan kosong,
+    // tutup lagi supaya daftar produk tidak tertutup layar kosong.
+    if (document.body.classList.contains('keranjang-terbuka')) document.body.classList.remove('keranjang-terbuka');
+    updateTotals();
+    return;
+  }
   let html = '';
   cart.forEach(item => {
     const sub = item.qty * item.price_sell;
     cartSubtotal += sub;
+    const nama = escHtml(item.name);
     html += '<div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">' +
-      '<div><div class="fw-bold">' + item.name + '</div><div class="text-muted small">Rp ' + formatter.format(item.price_sell) + ' x ' + item.qty + '</div></div>' +
+      '<div class="keranjang-nama"><div class="fw-bold">' + nama + '</div>' +
+      '<div class="text-muted small">Rp ' + formatter.format(item.price_sell) + ' &times; ' + item.qty + '</div></div>' +
       '<div class="text-end"><div class="fw-bold">Rp ' + formatter.format(sub) + '</div>' +
-      '<div class="btn-group btn-group-sm mt-1"><button class="btn btn-outline-secondary" onclick="updateQty(' + item.id + ', -1)">-</button><button class="btn btn-outline-secondary" onclick="updateQty(' + item.id + ', 1)">+</button></div></div>' +
+      '<div class="btn-group btn-group-sm mt-1">' +
+      '<button class="btn btn-outline-secondary" onclick="updateQty(' + item.id + ', -1)" aria-label="Kurangi ' + nama + '">&minus;</button>' +
+      '<button class="btn btn-outline-secondary" onclick="updateQty(' + item.id + ', 1)" aria-label="Tambah ' + nama + '">+</button>' +
+      '<button class="btn btn-outline-danger" onclick="hapusBarang(' + item.id + ')" aria-label="Hapus ' + nama + '"><i class="bi bi-trash3"></i></button>' +
+      '</div></div>' +
     '</div>';
   });
   container.innerHTML = html;
@@ -374,51 +459,109 @@ function printReceipt(invoice, amount, result, metode) {
 
 function filterProductGrid(keyword) {
   const term = (keyword || '').toLowerCase();
-  document.querySelectorAll('#product-grid > div').forEach(col => {
-    col.style.display = !term || col.textContent.toLowerCase().includes(term) ? '' : 'none';
+  document.querySelectorAll('#product-grid .produk-slide').forEach(slide => {
+    let kena = 0;
+    slide.querySelectorAll('.produk-kol').forEach(col => {
+      const cocok = !term || col.textContent.toLowerCase().includes(term);
+      col.style.display = cocok ? '' : 'none';
+      if (cocok) kena++;
+    });
+    slide.classList.toggle('slide-kosong', kena === 0);
   });
+  document.getElementById('product-grid').scrollLeft = 0;
+  perbaruiIndikator();
 }
 
-// Grid/Daftar hanya mengubah tampilan kartu produk; isi, harga, stok dan cara kerjanya
-// (klik = masuk keranjang) tetap sama. Pilihannya disimpan per perangkat, sama seperti
-// pengaturan kertas di /barcode.
-const KUNCI_TAMPILAN_PRODUK = 'kasir-tampilan-produk';
+const HP = window.matchMedia('(max-width: 767.98px)');
+// Batas katalog digeser: HP dan tablet potret (<= 991.98px) memakai slide mendatar; di atasnya
+// slidanya menumpuk menjadi grid biasa dan angkanya disembunyikan CSS.
+const LEBAR_SLIDER = window.matchMedia('(max-width: 991.98px)');
 
-function setTampilanProduk(mode, simpan) {
-  const daftar = mode === 'daftar';
-  document.getElementById('product-grid').classList.toggle('mode-daftar', daftar);
-  ['Grid', 'Daftar'].forEach(nama => {
-    const btn = document.getElementById('btnTampilan' + nama);
-    const aktif = daftar === (nama === 'Daftar');
-    btn.classList.toggle('btn-secondary', aktif);
-    btn.classList.toggle('btn-outline-secondary', !aktif);
-  });
-  if (simpan !== false) {
-    try { localStorage.setItem(KUNCI_TAMPILAN_PRODUK, daftar ? 'daftar' : 'grid'); } catch (e) {}
+// ---------- Slide produk (HP & tablet) ----------
+// Produk sudah dipecah 12 per slide di EJS; di sini hanya indikator "2 / 5" yang dihitung dari
+// posisi geser, dan hanya saat slider benar-benar bisa digeser.
+function slideTerlihat() {
+  return Array.from(document.querySelectorAll('#product-grid .produk-slide:not(.slide-kosong)'));
+}
+
+function perbaruiIndikator() {
+  const chip = document.getElementById('produkIndikator');
+  const slider = document.getElementById('product-grid');
+  const jumlah = slideTerlihat().length;
+  let nomor = 1;
+  if (jumlah > 1 && slider.clientWidth > 0) {
+    nomor = Math.round(slider.scrollLeft / slider.clientWidth) + 1;
+    nomor = Math.min(jumlah, Math.max(1, nomor));
   }
+  chip.textContent = jumlah > 1 ? nomor + ' / ' + jumlah : '';
+  chip.classList.toggle('ada', jumlah > 1);
 }
 
-setTampilanProduk((() => {
-  try { return localStorage.getItem(KUNCI_TAMPILAN_PRODUK) === 'daftar' ? 'daftar' : 'grid'; } catch (e) { return 'grid'; }
-})(), false);
+(function daftarkanSlider() {
+  const slider = document.getElementById('product-grid');
+  let antre = false;
+  slider.addEventListener('scroll', () => {
+    if (antre) return;
+    antre = true;
+    requestAnimationFrame(() => { antre = false; perbaruiIndikator(); });
+  }, { passive: true });
+  LEBAR_SLIDER.addEventListener('change', perbaruiIndikator);
+})()
+
+// ---------- Keranjang: bilah bawah, layar penuh saat dibuka (<= 767.98px) ----------
+function setKeranjang(buka) {
+  document.body.classList.toggle('keranjang-terbuka', !!buka);
+  const gagang = document.querySelector('.keranjang-handle');
+  if (gagang) gagang.setAttribute('aria-expanded', String(!!buka));
+}
+function bukaKeranjang() { setKeranjang(true); }
+function tutupKeranjang() { setKeranjang(false); }
+
+// ---------- Teks yang hanya masuk akal di mesin kasir ----------
+// (F2)/(F4) tidak ada di keyboard HP, dan autofocus pada kolom cari membuat keyboard
+// layar langsung menutupi separuh daftar produk begitu halaman dibuka.
+function terapkanTeksPerangkat() {
+  const hp = HP.matches;
+  barcodeInput.placeholder = hp ? 'Cari produk atau scan barcode' : 'Scan Barcode atau Cari Produk (F2)...';
+  const bayar = document.querySelector('.total-bayar .btn-success');
+  if (bayar) bayar.textContent = hp ? 'BAYAR' : 'BAYAR (F4)';
+  if (!hp) barcodeInput.focus();
+}
 
 const barcodeInput = document.getElementById('barcode-input');
+
+function produkSiapDijual() {
+  return Array.from(document.querySelectorAll('#product-grid .product-card')).map(card => {
+    try { return JSON.parse(decodeURIComponent(card.dataset.product)); } catch (err) { return null; }
+  }).filter(Boolean);
+}
+
+// Satu jalur untuk scanner USB (Enter di kolom cari), pemindai kamera, dan ketikan manual:
+// barcode yang sama persis menang, lalu satu-satunya yang cocok ikut masuk, lebih dari satu
+// hanya disaring, dan tidak ada yang masuk kalau nomornya tidak dikenal.
+function prosesKode(teks, lewatScan) {
+  const term = String(teks || '').trim().toLowerCase();
+  if (!term) { filterProductGrid(''); return { status: 'kosong' }; }
+  const parsed = produkSiapDijual();
+  const exact = parsed.find(p => String(p.barcode || '') === term);
+  const matches = parsed.filter(p => String(p.barcode || '').includes(term) || String(p.name).toLowerCase().includes(term));
+  const produk = exact || (matches.length === 1 ? matches[0] : null);
+  if (!produk) {
+    if (matches.length > 1) { filterProductGrid(term); return { status: 'banyak', jumlah: matches.length }; }
+    if (!lewatScan) alert('Produk "' + term + '" tidak ditemukan.');
+    return { status: 'tidak-ada', teks: term };
+  }
+  const hasil = addToCart(produk);
+  barcodeInput.value = '';
+  filterProductGrid('');
+  return hasil;
+}
+
 barcodeInput.addEventListener('input', (e) => filterProductGrid(e.target.value.trim()));
 barcodeInput.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
   e.preventDefault();
-  const term = barcodeInput.value.trim().toLowerCase();
-  if (!term) { filterProductGrid(''); return; }
-
-  const cards = Array.from(document.querySelectorAll('#product-grid .product-card'));
-  const parsed = cards.map(card => { try { return JSON.parse(decodeURIComponent(card.dataset.product)); } catch (err) { return null; } }).filter(Boolean);
-  const exact = parsed.find(p => String(p.barcode) === term);
-  const matches = parsed.filter(p => String(p.barcode).includes(term) || p.name.toLowerCase().includes(term));
-
-  if (exact) { addToCart(exact); barcodeInput.value = ''; filterProductGrid(''); }
-  else if (matches.length === 1) { addToCart(matches[0]); barcodeInput.value = ''; filterProductGrid(''); }
-  else if (matches.length > 1) { filterProductGrid(term); }
-  else { alert('Produk "' + barcodeInput.value + '" tidak ditemukan.'); }
+  prosesKode(barcodeInput.value, false);
 });
 
 const branchSwitcher = document.getElementById('branchSwitcher');
@@ -434,7 +577,206 @@ if (branchSwitcher) {
 
 document.getElementById('paymentModal').addEventListener('shown.bs.modal', gulirKeQris);
 
-document.addEventListener('keydown', (e) => { if(e.key==='F2'){e.preventDefault(); document.getElementById('barcode-input').focus();} else if(e.key==='F4'){e.preventDefault(); showPaymentModal();} });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.body.classList.contains('keranjang-terbuka')) { tutupKeranjang(); return; }
+  if (e.key === 'F2') { e.preventDefault(); barcodeInput.focus(); }
+  else if (e.key === 'F4') { e.preventDefault(); showPaymentModal(); }
+});
+
+// Lebar berpindah (rotasi HP, jendela PC digeser): label perangkat hanya berubah di batas HP, dan
+// keranjang layar penuh cuma punya arti di layout bilah (<= 767,98px) - di layout samping kelasnya
+// dibuang lagi supaya tidak tertinggal terbuka.
+const padaLebarHPBerubah = () => { if (!HP.matches) setKeranjang(false); terapkanTeksPerangkat(); };
+if (HP.addEventListener) HP.addEventListener('change', padaLebarHPBerubah); else if (HP.addListener) HP.addListener(padaLebarHPBerubah);
+
+perbaruiIndikator();
+terapkanTeksPerangkat();
 updateTotals();
+</script>
+<script>
+// ==================== PEMINDAI BARCODE KAMERA ====================
+// Pustaka html5-qrcode dilayani dari public/vendor (bukan CDN) supaya pemindai tetap jalan
+// saat internet toko mati. Pustakanya yang memakai BarcodeDetector bawaan browser bila ada
+// dan decoder miliknya bila tidak — iOS Safari tidak punya BarcodeDetector sama sekali.
+// Nama panjang sengaja dipakai: ini konstanta tingkat global di halaman, dan satu huruf
+// cepat bertabrakan dengan blok script lain yang ikut dirender.
+const FORMAT_PUSTAKA = window.Html5QrcodeSupportedFormats;
+// Yang ditempel di kemasan toko adalah EAN-13/EAN-8/UPC, label cetakan /barcode adalah
+// Code 128, dan QR ikut karena QRIS serta kode pada kemasan supplier.
+const SCAN_FORMAT = FORMAT_PUSTAKA ? [FORMAT_PUSTAKA.CODE_128, FORMAT_PUSTAKA.CODE_39, FORMAT_PUSTAKA.ITF,
+  FORMAT_PUSTAKA.EAN_13, FORMAT_PUSTAKA.EAN_8, FORMAT_PUSTAKA.UPC_A, FORMAT_PUSTAKA.UPC_E, FORMAT_PUSTAKA.QR_CODE] : null;
+
+const scanOverlay = document.getElementById('scanOverlay');
+const scanJudul = document.getElementById('scanJudul');
+const scanStatus = document.getElementById('scanStatus');
+const scanPetunjuk = document.getElementById('scanPetunjuk');
+const btnScanFoto = document.getElementById('btnScanFoto');
+const scanFoto = document.getElementById('scanFoto');
+
+let pemindai = null;
+let pemindaiJalan = false;
+let kodeTerakhir = '';
+let waktuKodeTerakhir = 0;
+// Satu barcode yang dibiarkan di depan kamera terbaca berulang kali (10 fps); tanpa jeda ini
+// 1 sachet jadi 10 sachet di keranjang.
+const JEDA_ULANG_SCAN = 2200;
+let nada = null;
+
+function bisaViewfinder() {
+  // getUserMedia hanya hidup di secure context: https:// (tunnel) atau localhost ya,
+  // http://192.168.x.x:3000 tidak. Yang menolak adalah browser, bukan aplikasinya.
+  return !!(window.Html5Qrcode && SCAN_FORMAT && window.isSecureContext
+    && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+function statusScan(teks, jenis) {
+  scanStatus.textContent = teks || '';
+  scanStatus.className = 'scan-status' + (jenis ? ' ' + jenis : '');
+}
+
+function tampilkanOverlay(modeFoto) {
+  scanOverlay.classList.toggle('scan-mode-foto', !!modeFoto);
+  scanOverlay.classList.remove('is-hidden');
+  btnScanFoto.innerHTML = modeFoto ? '<i class="bi bi-camera"></i> Potret ulang'
+    : '<i class="bi bi-camera"></i> Scan dari foto';
+  scanJudul.textContent = modeFoto ? 'Potret barcode: seluruh garis + tepi putih masuk bingkai'
+    : 'Arahkan barcode ke dalam bingkai';
+  scanPetunjuk.textContent = modeFoto
+    ? 'Kamera HP dibuka untuk tiap potret. Kalau barcode sulit fokus, gunakan scanner USB.'
+    : 'Scan terus-menerus: tiap barcode yang terbaca langsung masuk keranjang.';
+}
+
+function bipScan() {
+  try {
+    nada = nada || new (window.AudioContext || window.webkitAudioContext)();
+    const o = nada.createOscillator(), g = nada.createGain();
+    o.type = 'square';
+    o.frequency.value = 1180;
+    g.gain.setValueAtTime(0.0001, nada.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.07, nada.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, nada.currentTime + 0.13);
+    o.connect(g);
+    g.connect(nada.destination);
+    o.start();
+    o.stop(nada.currentTime + 0.14);
+  } catch (err) { /* perangkat tanpa output audio: getar tetap dicoba */ }
+  if (navigator.vibrate) { try { navigator.vibrate(45); } catch (err) {} }
+}
+
+// Hasil scan masuk lewat prosesKode(), jalur yang sama dengan Enter dari scanner USB, jadi
+// pemindai kamera tidak punya aturan sendiri soal barcode kembar atau stok habis.
+function padaKodeScan(kode) {
+  const bersih = String(kode || '').trim();
+  if (!bersih) return;
+  const sekarang = Date.now();
+  if (bersih === kodeTerakhir && sekarang - waktuKodeTerakhir < JEDA_ULANG_SCAN) return;
+  kodeTerakhir = bersih;
+  waktuKodeTerakhir = sekarang;
+  const hasil = prosesKode(bersih, true);
+  if (hasil.status === 'stok-habis') { statusScan('Stok ' + hasil.produk.name + ' tinggal ' + hasil.stok + '.', 'gagal'); return; }
+  if (hasil.status === 'tidak-ada') { statusScan('Barcode ' + bersih + ' tidak ada di produk cabang ini.', 'gagal'); return; }
+  if (hasil.status === 'banyak') { statusScan('"' + bersih + '" cocok dengan ' + hasil.jumlah + ' produk - ketuk kartunya.', 'gagal'); return; }
+  bipScan();
+  statusScan('+ ' + hasil.qty + '  ' + hasil.produk.name + '   Rp ' + formatter.format(hasil.produk.price_sell * hasil.qty), 'ok');
+}
+
+function wadahPemindai() {
+  if (!pemindai) pemindai = new window.Html5Qrcode('scan-video',
+    { verbose: false, formatsToSupport: SCAN_FORMAT, useBarCodeDetectorIfSupported: true });
+  return pemindai;
+}
+
+async function hentikanViewfinder() {
+  pemindaiJalan = false;
+  const p = pemindai;
+  pemindai = null;
+  if (!p) return;
+  try { await p.stop(); } catch (err) { /* belum sempat jalan atau sudah berhenti */ }
+  try { p.clear(); } catch (err) {}
+}
+
+async function mulaiViewfinder() {
+  tampilkanOverlay(false);
+  statusScan('Menyiapkan kamera...');
+  try {
+    await wadahPemindai().start({ facingMode: { ideal: 'environment' } },
+      {
+        fps: 10,
+        // Bingkai melebar, bukan kotak: barcode satu dimensi butuh lebar garis, dan HP dipegang tegak.
+        qrbox: (vw, vh) => {
+          const lebar = Math.round(Math.min(vw * 0.9, 340));
+          return { width: lebar, height: Math.round(Math.min(lebar * 0.45, vh * 0.45)) };
+        },
+        rememberLastUsedCamera: true
+      },
+      padaKodeScan, () => { /* frame tanpa kode: bukan error, biarkan menunggu */ });
+    pemindaiJalan = true;
+    statusScan('');
+  } catch (err) {
+    // Kamera ditolak, tidak ada, atau tidak bisa dibuka: mode foto tetap tersedia, jadi
+    // tombol scan tidak berakhir sebagai layar hitam.
+    await hentikanViewfinder();
+    kodeTerakhir = '';
+    statusScan('');
+    tampilkanOverlay(true);
+    // html5-qrcode menolak dengan objek Error di satu jalur dan string polos di jalur lain,
+    // jadi izin yang ditolak dikenali dari teks pesannya, bukan dari satu properti.
+    const ditolak = /NotAllowedError|Permission|denied|not allowed/i.test(String((err && err.name) || '') + ' ' + String((err && err.message) || err));
+    statusScan('Kamera halaman tidak bisa dibuka'
+      + (ditolak ? ' (izin ditolak)' : '')
+      + '. Pakai mode foto sebagai gantinya.', 'gagal');
+  }
+}
+
+// Titik masuk tombol "Scan". Viewfinder hanya ditawarkan di konteks aman (https:// tunnel atau
+// localhost); di http://192.168.x.x browser menolak getUserMedia, jadi langsung turun ke mode
+// foto alih-alih menampilkan layar kamera hitam.
+function bukaPemindai() {
+  if (bisaViewfinder()) { mulaiViewfinder(); return; }
+  mulaiModeFoto();
+}
+
+// Jalur kedua: kamera bawaan HP memotret, barcode dibaca dari fotonya. Ini bekerja di mana
+// saja - termasuk http://192.168.x.x - karena bukan getUserMedia, melainkan input berkas
+// capture yang diizinkan browser di konteks apa pun.
+function mulaiModeFoto() {
+  if (!window.Html5Qrcode || !SCAN_FORMAT) {
+    alert('Pustaka pemindai belum ada di perangkat ini. Buka halaman ini sekali saat server kasir hidup (agar asetnya terunduh), lalu coba lagi.');
+    return;
+  }
+  tampilkanOverlay(true);
+  if (pemindaiJalan) hentikanViewfinder();
+  statusScan('Kamera HP belum terbuka? Ketuk "Potret ulang".');
+  scanFoto.click();
+}
+
+async function padaFotoSelesai(ev) {
+  const berkas = ev.target.files && ev.target.files[0];
+  ev.target.value = '';
+  if (!berkas) return;
+  tampilkanOverlay(true);
+  statusScan('Membaca foto ' + berkas.name + '...');
+  try {
+    const kode = await wadahPemindai().scanFile(berkas, false);
+    padaKodeScan(kode);
+  } catch (err) {
+    statusScan('Barcode tidak terbaca dari foto itu. Potret lebih dekat, tegak lurus, dan jangan sampai ujung garis terpotong.', 'gagal');
+  }
+}
+
+function tutupPemindai() {
+  scanOverlay.classList.add('is-hidden');
+  statusScan('');
+  kodeTerakhir = '';
+  hentikanViewfinder();
+}
+
+scanFoto.addEventListener('change', padaFotoSelesai);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !scanOverlay.classList.contains('is-hidden')) { e.stopPropagation(); tutupPemindai(); }
+});
+// Kamera yang dibiarkan menyala saat halaman ditutup menguras baterai HP dan menahan LED
+// scanner menyala, jadi dihentikan juga saat halaman ditinggal.
+addEventListener('pagehide', () => { if (!scanOverlay.classList.contains('is-hidden')) hentikanViewfinder(); });
 </script>
 <%- include('layout-footer') %>

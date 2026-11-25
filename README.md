@@ -203,6 +203,55 @@ Akun lain — kasir, manager yang sudah ada — tidak pernah ikut berubah.
 - Pelanggan yang sudah pernah belanja **tidak bisa dihapus** (`/pelanggan/delete` menolak) karena
   laporan dan jejak struk mengambil namanya dari baris itu.
 
+## Scan barcode dengan kamera HP
+Tombol **Scan** (ikon kamera) duduk di samping kolom pencarian produk `/kasir`, bukan sebagai
+halaman terpisah. Satu tombol, dua jalur, karena keduanya pasti dipakai di toko:
+
+- **Viewfinder langsung** — barcode masuk keranjang tanpa ketuk apa pun. Hanya hidup di
+  *secure context*: `https://pos.domainanda.com` (tunnel) atau `http://localhost`. Di
+  `http://192.168.x.x:3000` browser menolak `getUserMedia`, jadi jalur ini tidak pernah muncul
+  lewat alamat LAN. Itu aturan browser, bukan bug aplikasi.
+- **Mode foto** — tombol yang sama membuka kamera bawaan HP lewat
+  `<input type="file" accept="image/*" capture="environment">`, fotonya dibaca dari berkas.
+  Bukan `getUserMedia`, jadi jalan di konteks apa pun, termasuk alamat LAN. Kalau viewfinder
+  ditolak atau kamera tidak ada, layar pemindai otomatis pindah ke mode ini dengan pesan
+  "Kamera halaman tidak bisa dibuka (izin ditolak). Pakai mode foto sebagai gantinya."
+
+Pustaka: `html5-qrcode@2.3.8` (375 KB, Apache-2.0) diambil ke `public/vendor/html5-qrcode/` —
+bukan CDN, tidak ada dependensi npm baru, jadi `git pull` + `npm run dev` di mesin kasir tetap
+cukup dan pemindai tetap jalan saat internet mati. Berkasnya ikut didaftarkan di `SHELL`
+`public/sw.js` dan penanda cache statis dinaikkan (`kasir-statis-v5`) supaya klien membuang
+salinan lama. Decoder yang dipakai: `BarcodeDetector` bawaan browser bila ada, kalau tidak
+decoder bawaan pustaka (`useBarCodeDetectorIfSupported: true`). iOS Safari tidak punya
+`BarcodeDetector` sama sekali, jadi di iPhone yang bekerja jalur bundel — dan browser yang dipakai
+mengukur di sini juga tidak punya `BarcodeDetector` (`window.BarcodeDetector` kosong), sehingga
+semua hasil round-trip di bawah benar-benar melewati decoder bundel, bukan detektor bawaan.
+
+Format yang diterima sengaja dibatasi: Code 128 (label cetakan `/barcode`), EAN-13/EAN-8/UPC-A/
+UPC-E (kemasan retail), Code 39, ITF, dan QR (QRIS, kode supplier). Round-trip terukur pada
+gambar PNG hasil JsBarcode + satu QRIS asli: `code128` 8990000015892, `ean13` 5901234123457,
+`ean8` 96385074, `code39` "KASIR-99", `itf` 123456789012, `upca` 042100005264, dan payload QRIS
+278 karakter — semuanya kembali persis. (ITF sempat gagal pada gambar tipis `width: 2.2`; dengan
+modul 3.6 dan margin 30px langsung terbaca, jadi itu artefak gambar uji, bukan pustakanya.)
+
+Hasil scan masuk lewat `prosesKode()` — **jalur yang sama persis** dengan Enter dari scanner USB,
+jadi aturannya tidak bercabang: barcode sama persis menang, satu-satunya yang cocok langsung
+**masuk keranjang** (tanpa konfirmasi), lebih dari satu hanya **menyaring** daftar ("89900000 cocok
+dengan 28 produk - ketuk kartunya."), dan yang tidak dikenal hanya memunculkan baris status merah,
+bukan alert — alert di atas layar pemindai membuat scan berikutnya terkunci. Umpan baliknya baris
+status hijau `+ 1 KABLET 3M Rp 8.000` + bip 1180 Hz + `navigator.vibrate(45)`; perangkat tanpa
+speaker tetap mendapat getaran.
+
+Satu barcode yang dibiarkan di depan kamera terbaca ulang 10 kali per detik, jadi ada
+`JEDA_ULANG_SCAN = 2200` ms untuk kode yang sama: tiga scan berturut-turut dari berkas yang sama
+hanya menambah satu item (terukur qty 1 → 2, bukan → 4). Stok yang sudah penuh dilaporkan lewat
+baris status ("Stok KABLET 3M tinggal 41."), bukan dialog.
+
+Kamera dimatikan lewat `stop()+clear()` saat overlay ditutup (tombol X atau **Escape**) dan lewat
+`pagehide` saat halaman ditinggalkan — kamera yang tertinggal menyala menguras baterai HP dan
+menahan LED scanner. `escHtml()` dipasang pada nama produk di keranjang karena teks yang terbaca
+dari kamera (isi QRIS, kode supplier) ikut dirender sebagai baris.
+
 ## Kategori produk
 Aplikasi ini dipakai untuk jenis usaha apa pun, jadi daftarnya bukan daftar tetap. Tabel `categories`
 sejak awal sudah ada (`id`, `name` UNIQUE, `description`) tetapi satu-satunya isinya adalah seed
@@ -524,16 +573,66 @@ helper `getBranchScope` menentukan cabang mana yang dipakai suatu query.
   Diukur lewat iframe berlebar 390/768/834/991/992/1024/1280: menumpuk sampai 991px, berdampingan
   mulai 992px dengan kolom terkecil 291px, dan tidak ada `scrollWidth` melebihi viewport di semua
   lebar itu.
+- **Layar kasir di ≤ 767,98px**: keranjang jadi **bilah di atas nav
+  bawah**, dan ketuk gagangnya membuka keranjang **layar penuh**. Model lama mengunci `.app-main`
+  setinggi `100dvh` dengan dua wilayah gulir bertumpuk; diukur pada iframe 390×844 dengan 35 kartu
+  dan 5 item, grid produk (flex dengan basis 1888px) menarik hampir semua ruang sehingga panel
+  keranjang cuma kebagian **27px** sementara satu baris item tingginya 59px — keranjang tidak bisa
+  dibaca sama sekali. Sekarang yang menggulir hanya dokumen, bilah tertutup terukur y=628–767
+  (139px) dengan `--tinggi-bilah: 148px` di `:root` — ruang gulir `.app-main` = 64px nav + 13px
+  lingkaran CTA + 148px (`padding-bottom` terukur 225px) — dan saat dibuka daftar pesanan mengambil
+  seluruh tinggi layar (terukur 0–844, `Escape` menutupnya lagi). Aturan bilah butuh `width: auto`
+  karena `.row > *` Bootstrap memberi `width: 100%` pada anak kolom di setiap lebar, dan lebar
+  eksplisit membuat `right: 0` diabaikan (terukur bilah melebar sampai x=1039 sebelum batasnya
+  dipindah ke 767,98px).
+- **Katalog digeser mendatar sampai ≤ 991,98px (HP dan tablet)**, bukan digulir ke bawah:
+  `views/kasir.ejs` memecah produk rata 12 kartu per `.produk-slide` sejak render, dan blok
+  `@media (max-width: 991.98px)` mengubah `#product-grid` menjadi `flex` dengan
+  `scroll-snap-type: x mandatory` sehingga tiap usapan berpindah satu halaman penuh. Pemecahannya di
+  HTML, bukan di JavaScript, jadi katalog tetap tersusun rapi walau skrip halaman gagal jalan; yang
+  dihitung JavaScript hanya angka halaman (`scrollLeft / clientWidth`) yang tampil sebagai chip
+  "1 / 3". Jumlah kolomnya mengikuti ruang yang tersisa: **tiga kolom × empat baris** di HP
+  (kartu 112×82px pada 390×844, 97×82px pada 360×740) dan **dua kolom × enam baris** di tablet karena
+  separuh lebarnya dipakai kolom keranjang (234×82px pada 768px, 256×82px pada 834px, 308×82px pada
+  991px). Di ≥ 992px slider kembali `display: block`, ke-35 kartu terlihat semua tanpa geser dan chip
+  disembunyikan (terukur 992×800 dan 1280×800). Nama produk boleh tiga baris (`.76rem`,
+  `line-clamp: 3`) supaya kartu yang kecil tidak memotong nama — dari 35 nama uji, nol yang terpotong
+  pada 360/390/412px dan pada 768/834/991px. Mode **Daftar dan tombol Grid/Daftar dihapus**
+  (`mode-daftar`, `setTampilanProduk()`, `#produkTampilanBar`, kunci `kasir-tampilan-produk`): grid
+  kecil sudah cukup, dan satu-satunya kontrol yang tersisa adalah pencarian. `cek-sintaks.js` menjaga
+  keduanya tetap hilang — ia gagal kalau salah satu nama itu kembali muncul di `views/kasir.ejs` atau
+  `public/css/style.css`, dan ia juga memeriksa **rentang media** tiap aturan (bilah harus di
+  767,98px, slider di 991,98px) karena kedua batas itu pernah tertukar dan gejalanya hanya terlihat di
+  tablet.
+- **Tablet potret (768–991,98px) memakai tata letak PC**: `col-md-8` + `col-md-4` sehingga keranjang
+  duduk di kolom kanan, bukan sebagai bilah (terukur panel 251px di x=502 pada 768×1024, 273px di
+  x=546 pada 834×1112, 325px di x=651 pada 991×1112; gagang dan kepala keranjang `display:none`).
+  Ruangannya sempit begitu **menu sidebar dibuka** (sidebar 220px menggerogoti kolom isi): panel
+  tinggal 178px pada 768px dan 200px pada 834px, dan satu baris `Total: Rp 122.500` + BAYAR (F4) butuh
+  ±225px sehingga tombolnya menjulur ke x=811 / x=856 — keluar layar, tidak bisa diketuk. Karena itu
+  di rentang 768–991,98px `.total-bayar` boleh **membungkus** (`flex-wrap: wrap` + tombol
+  `flex: 1 1 auto`): total di baris pertama, BAYAR satu baris penuh di bawahnya. Setelah itu
+  terukur nol elemen yang melewati tepi panel dan BAYAR berhenti di x=737 (768px) / x=803 (834px)
+  dengan tinggi 58px, baik sidebar tertutup maupun terbuka.
+  Baris di atas pencarian (`Stok yang tampil & berkurang: <cabang>` + dropdown `/kasir?branch_id=`)
+  dipadatkan jadi chip `.kasir-cabang` setinggi 24px + dropdown tanpa `style` inline: kalimat lama
+  turun 2-3 baris di lebar HP sehingga grid baru mulai dari y=190, sekarang **y=161** (hemat 29px,
+  ±sepertiga baris kartu) dan chip+dropdown tetap satu baris sampai 320px. Nama cabang tidak
+  dihapus karena kasir biasa (non-admin) tidak punya dropdown: dari situ ia tahu stok kartu dan
+  pengurangannya cabang mana — keterangannya pindah ke atribut `title`, dan `#branchSwitcher`
+  (id, `form-select-sm`, opsi, dan handler yang sama seperti di `/opname` dan `/produk`) tidak
+  disentuh.
+  Ruang bawah bilah dihitung dengan `:has()`; di browser lama yang tidak mendukungnya halaman tetap
+  dipakai, hanya sisa gulirnya kembali angka nav biasa (78px). Di ≥ 992px layout lama tidak berubah:
+  panel 321px di kanan pada 992×800 dan 417px pada 1280×800. Klik kartu tetap menambah badge di
+  semua lebar yang diuji (390/768/834/991/1280) dan `showPaymentModal()` membuka layar penuh.
+  Yang belum rapi dan sudah ada sejak sebelum perubahan ini: di ≥ 768px `scrollHeight` dokumen
+  1281px padahal `.app-main` setinggi layar (834×1112), karena `.sidebar` bertuliskan
+  `min-height: 100vh` dan menunya sendiri tingginya 1125px — halaman tetap bisa digulir, isinya tidak
+  terpotong, dan angka yang sama berlaku di mesin kasir 1280×800.
 - Bar bawah tingginya ditambah `env(safe-area-inset-bottom)` (dengan `viewport-fit=cover` di
   `layout-header.ejs`) supaya tidak tertutup gesture bar; isi `.app-main` dan bilah bayar di
   `/kasir` dinaikkan setinggi bar tersebut agar tetap bisa disentuh.
-- **Layar kasir di ≤ 991,98px** dikunci satu layar: `.pos-stack` dipaksa `flex-wrap: nowrap` karena
-  `.row` bawaan Bootstrap membolehkan wrap — dulu panel keranjang terlipat ke kolom kedua dan
-  tombol BAYAR hilang begitu item melebihi tiga. Bilah subtotal/BAYAR berhenti sticky dan selalu
-  jadi baris terakhir, yang menggulir hanya daftar pesanan, dan grid produk boleh menyusut saat
-  pesanan panjang tapi tidak di bawah `25vh` supaya tombol produk tetap ada. Aturan ini memakai
-  `:has()`; di browser yang belum mendukungnya halaman tetap jalan dengan layout lama (satu gulir
-  halaman), hanya bilah bayarnya kembali sticky.
 
 - **Target sentuh ≤ 767,98px** berlaku untuk semua kontrol form, bukan hanya input angka:
   `input.form-control`, `select.form-select`, dan `textarea.form-control` sama-sama `min-height: 42px`
@@ -837,7 +936,8 @@ kasir tetap bisa dipakai lewat alamat LAN, dengan struk QRIS dan harga yang ters
 ## Aset lokal dan perilaku offline
 - Seluruh CSS/JS/font Bootstrap diambil dari `public/vendor/`, jadi tidak ada satu pun
   permintaan ke internet saat halaman dibuka. Internet mati tidak lagi merusak tampilan
-  atau mematikan modal pembayaran.
+  atau mematikan modal pembayaran. Pemindai barcode kamera (`html5-qrcode`) dan pembuat label
+  (`JsBarcode`) ikut dilokalkan dengan alasan yang sama: toko tetap bisa menjual tanpa internet.
 - `public/sw.js` (service worker) memakai **network-first** untuk halaman: selama server
   terjangkau, yang tampil selalu jawaban server terbaru. Begitu koneksi atau server putus,
   permintaan jatuh ke cache sehingga kasir tetap melihat halaman terakhir yang pernah

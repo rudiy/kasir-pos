@@ -4,28 +4,63 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
 .sidebar.hidden { margin-left: calc(-1 * var(--sidebar-w)); }
 .sidebar a { color: #cbd5e1; text-decoration: none; padding: 10px 15px; display: block; border-radius: 5px; }
 .sidebar a:hover { background-color: #1E293B; color: white; }
-.pos-cart-panel { background: white; border-left: 1px solid #e2e8f0; height: calc(100vh - 60px); overflow-y: auto; }
+.pos-cart-panel { background: white; border-left: 1px solid #e2e8f0; height: calc(100vh - 60px); overflow-y: auto; display: flex; flex-direction: column; }
+/* Kepala sheet keranjang dan gagang bilah hanya dipakai di bawah 768 px (lihat blok kasir HP);
+   di mesin kasir dan tablet keranjang duduk di kolom samping, jadi keduanya tidak perlu muncul. */
+.keranjang-kepala { display: none; }
+.keranjang-handle { display: none; }
 .product-card { cursor: pointer; transition: transform 0.1s; }
 .product-card:hover { transform: scale(1.02); border-color: var(--gold); }
 
-/* Tombol Grid/Daftar di halaman kasir (views/kasir.ejs) hanya menempelkan kelas
-   mode-daftar pada #product-grid, jadi keranjang, pencarian dan total tidak ikut berubah. */
+/* Baris cabang di atas pencarian /kasir: chip + dropdown harus tinggal satu baris sempit, termasuk
+   di HP 390px, supaya tidak memakan satu baris kartu produk. */
+.kasir-cabang {
+  display: inline-flex; align-items: center; gap: .3rem; padding: .1rem .55rem;
+  border: 1px solid #e2e8f0; border-radius: 999px; background: #fff; color: #475569;
+  font-size: .78rem; font-weight: 600; line-height: 1.5; white-space: nowrap;
+}
+.kasir-cabang > i { color: var(--gold); font-size: .78rem; }
+.kasir-cabang-pilih { width: auto; max-width: 200px; font-size: .8rem; }
+
+/* Katalog /kasir kini selalu grid: tombol pilih tampilan dan kelas turunannya dihapus, dan sampai
+   991,98px grid-nya dipecah per 12 kartu lalu digeser mendatar (blok KATALOG). .produk-nama menjaga
+   kolom flex supaya nama panjang tidak merentangkan kartu, dan nomor barcode tidak ditampilkan
+   karena pencarian /kasir sudah menerima barcode langsung. */
 #product-grid .produk-nama { min-width: 0; }
 #product-grid .produk-kode { display: none; }
-#product-grid.mode-daftar > div { flex: 0 0 100%; width: 100%; max-width: 100%; }
-#product-grid.mode-daftar .card-body { display: flex; align-items: center; gap: .75rem; text-align: left !important; padding: .45rem .75rem !important; }
-#product-grid.mode-daftar .produk-nama { flex: 1 1 auto; }
-#product-grid.mode-daftar .card-title { margin-bottom: 0; }
-/* Nama jangan dipotong di mode daftar: barisnya memang melebar supaya produk yang mirip
-   bisa dibedakan tanpa membuka menu Produk. */
-#product-grid.mode-daftar .card-title.text-truncate { white-space: normal; overflow: visible; text-overflow: clip; }
-#product-grid.mode-daftar .produk-kode { display: block; color: #64748B; }
-#product-grid.mode-daftar p { flex: 0 0 auto; min-width: 105px; text-align: right; }
-#product-grid.mode-daftar small.text-muted { flex: 0 0 auto; min-width: 58px; text-align: right; }
-#product-grid.mode-daftar .product-card:hover { transform: none; border-color: var(--gold); background: #F1F5F9; }
-/* Di layar sempit setiap milimeter dipakai kartu produk, jadi label penjelasnya disembunyikan;
-   dua tombol Grid/Daftar sudah cukup jelas dari ikonnya. */
-@media (max-width: 575.98px) { #produkTampilanBar > .small { display: none; } }
+/* Angka halaman ("2 / 5") dihitung JavaScript dan hanya ditampakkan bila katalognya digeser. */
+.produk-indikator { display: none; }
+/* Tiap slide memakai .row Bootstrap yang margin-nya negatif setengah gutter supaya barisnya rata
+   dengan tepi kolom; di sini margin-nya nol karena slidanya sendiri yang mengisi wadah, jadi tanpa
+   ini kartu pertama menjulur ±3px melewati kolom pencarian di atasnya. */
+#product-grid > .produk-slide { margin-left: 0; margin-right: 0; }
+
+/* ==================== PEMINDAI BARCODE KAMERA (/kasir) ====================
+   Layar penuh dan di atas modal (Bootstrap 1055, sheet Lainnya 1050) karena viewfinder harus
+   mengambil seluruh layar HP. Kelas is-hidden sendiri dipakai, bukan .d-none bootstrap, karena
+   display:flex di bawah akan kalah oleh .d-none{display:none!important}. */
+.scan-overlay {
+  position: fixed; inset: 0; z-index: 1080; display: flex; flex-direction: column;
+  background: #0B1220; color: #fff;
+}
+.scan-overlay.is-hidden { display: none !important; }
+.scan-atas { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .7rem .85rem .5rem; }
+.scan-judul { font-size: .92rem; font-weight: 600; line-height: 1.25; }
+.scan-video { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; background: #000; }
+/* html5-qrcode menuliskan gaya inline pada video dan wadahnya; keduanya dibiarkan mengikuti
+   lebar bingkai supaya kotak bidik (canvas pustaka) tidak melenceng dari gambar aslinya. */
+.scan-video video { display: block; width: 100% !important; }
+.scan-status { min-height: 46px; padding: .55rem .85rem; font-size: .92rem; text-align: center; }
+.scan-status.ok { color: #6EE7B7; font-weight: 600; }
+.scan-status.gagal { color: #FCA5A5; }
+.scan-bawah { display: flex; flex-direction: column; align-items: center; gap: .45rem; padding: .55rem .85rem calc(.9rem + env(safe-area-inset-bottom)); }
+.scan-kecil { font-size: .78rem; color: #94A3B8; text-align: center; max-width: 40ch; }
+/* Mode foto: tidak ada stream yang ditampilkan, jadi area kamera ditutup dan petunjuknya yang
+   mengambil ruang itu. */
+.scan-overlay.scan-mode-foto .scan-video { display: none; }
+.scan-overlay.scan-mode-foto .scan-bawah { flex: 1 1 auto; justify-content: center; }
+.scan-overlay.scan-mode-foto .scan-kecil { font-size: .98rem; color: #CBD5E1; max-width: 26ch; }
+@media print { .scan-overlay { display: none !important; } }
 
 /* ==================== RESPONSIVE (HP / TABLET / PC) ==================== */
 .sidebar { width: var(--sidebar-w); }
@@ -62,55 +97,147 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
   input.form-control, select.form-select, textarea.form-control { font-size: 16px; min-height: 42px; }
 }
 
-/* Tablet potret & HP: layar kasir ditumpuk supaya kartu produk dan keranjang tidak sempit. */
-@media (max-width: 991.98px) {
-  .pos-cart-panel { height: auto; border-left: none; border-top: 1px solid #e2e8f0; }
-  /* Batas 45vh lama dihapus: ia memotong baris terakhir di tengah. Halaman kasir punya
-     aturan sendiri di bawah (wilayah gulir dihitung dari sisa layar, bukan angka perkiraan). */
-  #cart-items { min-height: 120px; max-height: none; overflow-y: visible; }
+/* ==================== KASIR DI HP: KERANJANG JADI BILAH BAWAH ====================
+   Diukur pada iframe 390x844 dengan 35 kartu produk dan 5 item di keranjang: aturan lama
+   mengunci .app-main setinggi 100dvh dengan dua wilayah gulir bertumpuk, dan grid produk
+   (flex 0 1 auto dengan basis 1888 px) menarik hampir semua ruang, sehingga panel keranjang
+   hanya kebagian 27 px sementara satu baris item tinggi 59 px - keranjang praktis tidak bisa
+   dibaca. Model HP: satu wilayah gulir (dokumen), keranjang jadi bilah di atas nav bawah, dan
+   ketuk gagang membuka keranjang layar penuh.
+   Batasnya 767,98px - sama dengan batas nav bawah - karena sejak 768px keranjang kembali jadi
+   kolom di samping produk seperti di PC (col-md di views/kasir.ejs). */
+@media (max-width: 767.98px) {
+  /* Bilah tertutup terukur 139 px pada iframe 390x844. Angka ini hanya mengatur ruang gulir di
+     bawah bilah, jadi diambil 148 px: baris produk terakhir tidak pernah tertutup, dan sisanya
+     cuma jarak kosong di ujung daftar. */
+  :root { --tinggi-bilah: 148px; }
+  /* Lingkaran Kasir nav bawah menonjol di atas garis nav: terukur puncaknya y=767 sementara nav
+     baru mulai y=779 pada iframe 390x844 (margin-top -26px pada lingkaran 50px yang ditengahkan
+     flex menyisakan 12px). Nav ber-z 1040 dan bilah 1045, jadi tanpa ruang ini 13px puncak
+     lingkaran tertutup bilah keranjang dan kelihatan terpotong. */
+  :root { --naik-cta: 13px; }
 
-  /* Baris pesanan dipadatkan supaya lebih banyak item muat sebelum halaman perlu digulir.
-     Stepper sengaja di bawah 42px: barislah yang rapat, tombolnya tetap 34px. */
-  #cart-items > div { margin-bottom: .35rem !important; padding-bottom: .3rem !important; }
-  #cart-items .fw-bold { font-size: .9rem; }
-  #cart-items .small { font-size: .74rem; }
-  #cart-items .btn { min-height: 30px; padding: .1rem .65rem; font-size: .95rem; }
-  #cart-items .btn-group { margin-top: .1rem !important; }
+  .pos-cart-panel { border-left: none; height: auto; }
+  .pos-stack { display: block; margin-left: 0; margin-right: 0; }
 
-  /* Bilah bayar 194px adalah pemakan ruang terbesar di layar HP. Tombol BAYAR tetap 42px,
-     yang dipangkas hanya jarak antar baris dan ukuran angka total. */
-  .pos-stack .pos-checkout-bar { padding-top: .5rem !important; padding-bottom: .5rem !important; }
-  .pos-stack .pos-checkout-bar .mb-1 { margin-bottom: 0 !important; }
-  .pos-stack .pos-checkout-bar .small { font-size: .8rem; }
-  .pos-stack .pos-checkout-bar .fs-4 { font-size: 1.25rem !important; }
-  .pos-stack .pos-checkout-bar .btn { padding-top: .5rem !important; padding-bottom: .5rem !important; }
+  /* Baris pesanan diberi ruang sungguhan: daftar keranjang sekarang mengambil seluruh tinggi
+     layar saat dibuka, jadi tidak perlu dipadatkan sampai tombolnya di bawah target sentuh. */
+  #cart-items { min-height: 0; }
+  #cart-items > div { margin-bottom: .6rem !important; padding-bottom: .55rem !important; gap: .5rem; }
+  #cart-items .keranjang-nama { flex: 1 1 auto; min-width: 0; }
+  #cart-items .fw-bold { font-size: 1rem; }
+  #cart-items .small { font-size: .82rem; }
+  #cart-items .btn { min-height: 40px; padding: .1rem .8rem; font-size: 1.05rem; }
+  #cart-items .btn-group { flex-wrap: nowrap; }
+  .pos-stack .pos-checkout-bar .small { font-size: .88rem; }
+  .pos-stack .pos-checkout-bar .fs-4 { font-size: 1.3rem !important; }
 
-  /* Kartu produk ikut dipadatkan; ia sumber ruang terbesar di atas keranjang. */
-  #product-grid .card-body { padding: .45rem .35rem !important; }
-  #product-grid .card-title { font-size: .82rem; }
-  #product-grid .card-body p { font-size: .88rem; }
-  #product-grid .card-body small { font-size: .68rem; }
-  .pos-checkout-bar { position: sticky; bottom: 0; z-index: 5; }
+  .keranjang-kepala {
+    display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+    padding: .7rem .85rem; border-bottom: 1px solid #e2e8f0; background: #fff;
+  }
+  .keranjang-handle {
+    display: flex; align-items: center; gap: .5rem; width: 100%; min-height: 44px;
+    margin-bottom: .5rem; padding: .3rem .75rem; border: 1px solid #CBD5E1; border-radius: 10px;
+    background: #fff; color: var(--navy); font-weight: 600; font-size: .95rem;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .keranjang-handle .badge { margin-left: auto; }
+  .keranjang-handle .bi-chevron-up { color: #64748B; }
+
+  /* Bawah layar: nav 64px + lingkaran CTA + bilah, jadi baris produk terakhir tetap bisa
+     digulir muncul di atas ketiganya. */
+  .app-main:has(> .pos-stack) { padding-bottom: calc(64px + var(--naik-cta) + var(--tinggi-bilah) + env(safe-area-inset-bottom)); }
+
+  /* .row > * milik Bootstrap memberi width:100% pada anak kolom, dan lebar eksplisit membuat
+     right:0 diabaikan (terukur bilah melebar ke x=1039 di 834px) - karena itu width di nol-kan. */
+  .pos-stack > .pos-cart-panel {
+    position: fixed; left: 0; right: 0; width: auto;
+    bottom: calc(64px + var(--naik-cta) + env(safe-area-inset-bottom)); z-index: 1045;
+    display: block; height: auto; max-height: none; overflow: visible; background: #fff;
+    border-top: 1px solid #e2e8f0; box-shadow: 0 -6px 22px rgba(15, 23, 42, .16);
+  }
+  /* Tertutup: yang tersisa hanya gagang dan baris total + BAYAR. */
+  .pos-stack > .pos-cart-panel > #cart-items,
+  .pos-stack > .pos-cart-panel .keranjang-kepala,
+  .pos-stack > .pos-cart-panel .rincian-keranjang { display: none; }
+
+  body.keranjang-terbuka .app-main { overflow: hidden; }
+  body.keranjang-terbuka .pos-stack > .pos-cart-panel {
+    top: 0; bottom: 0; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: none;
+  }
+  body.keranjang-terbuka .pos-stack > .pos-cart-panel .keranjang-kepala { display: flex; flex: 0 0 auto; }
+  body.keranjang-terbuka .pos-stack > .pos-cart-panel #cart-items {
+    display: block; flex: 1 1 auto; min-height: 0; overflow-y: auto; background: #fff;
+  }
+  body.keranjang-terbuka .pos-stack > .pos-cart-panel .rincian-keranjang { display: block; }
+  body.keranjang-terbuka .pos-stack > .pos-cart-panel .keranjang-handle { display: none; }
 }
 
-/* Halaman kasir di layar sempit: tingginya dikunci satu layar, grid produk tetap setinggi
-   isinya, dan hanya daftar yang mau dibayar yang menggulir. Bilah bayar berhenti menjadi
-   sticky supaya ia tidak pernah menindih baris terakhir — sebelumnya baris keempat selalu
-   terpotong di belakang blok subtotal. Bila :has() tidak didukung, tampilan lama tetap jalan. */
+/* ==================== KASIR: KATALOG DIGESER MENDATAR (HP & TABLET) ====================
+   Katalog tidak digulir panjang lagi: views/kasir.ejs memecahnya rata 12 kartu per
+   .produk-slide sejak render, dan blok ini mengubah #product-grid menjadi jalur
+   scroll-snap mendatar sehingga satu usapan = satu halaman penuh. Pemecahannya ada di HTML,
+   jadi tanpa JavaScript sekalipun susunannya tetap benar. Di >= 992px slidanya menumpuk
+   menjadi grid biasa (display:block) dan angka "n / N" disembunyikan. */
 @media (max-width: 991.98px) {
-  .app-main:has(> .pos-stack) {
-    height: 100vh; height: 100dvh; overflow: hidden !important; display: flex; flex-direction: column;
+  #product-grid {
+    --bs-gutter-x: .4rem; --bs-gutter-y: .4rem;
+    display: flex; flex-wrap: nowrap; align-items: flex-start;
+    overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    margin-left: 0; margin-right: 0; padding: 1px 1px 4px;
   }
-  .app-main:has(> .pos-stack) > nav.navbar { flex: 0 0 auto; }
-  .pos-stack { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; flex-wrap: nowrap; overflow: hidden; }
-  /* Grid produk diberi batas bawah: tanpa min-height, pesanan yang banyak membuat panel
-     keranjang tumbuh ke atas sampai grid tinggal bilah pencarian saja. */
-  .pos-stack > .col-lg-8 { flex: 0 1 auto; min-height: 25vh; overflow-y: auto; }
-  /* Panel keranjang sendiri tidak boleh jadi wilayah gulir: kalau boleh, bilah bayar
-     terdorong ke bawahnya dan tombol BAYAR hilang begitu item bertambah. */
-  .pos-stack > .pos-cart-panel { flex: 1 1 auto; min-height: 0; height: auto; overflow: visible; }
-  .pos-stack #cart-items { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; }
-  .pos-stack .pos-checkout-bar { position: static; flex: 0 0 auto; }
+  #product-grid::-webkit-scrollbar { display: none; }
+  /* Tiap slide mengambil persis lebar tampilan supaya angka "n / N" dari scrollLeft benar. */
+  #product-grid > .produk-slide {
+    flex: 0 0 100%; width: 100%; max-width: 100%;
+    scroll-snap-align: start; scroll-snap-stop: always;
+  }
+  /* Slide yang seluruh kartunya tersaring kata kunci tidak boleh ikut jadi halaman. */
+  #product-grid > .produk-slide.slide-kosong { display: none; }
+  #product-grid .produk-kol { flex: 0 0 33.3333%; max-width: 33.3333%; }
+
+  /* Kartu kecil: 112x82 pada 390px. .text-truncate dari markup memaksa white-space:nowrap, jadi
+     white-space:normal dibutuhkan supaya clamp benar-benar memberi tiga baris; tanpa itu nama
+     panjang kemasan grosir terpotong satu baris. .produk-kode memang tidak pernah tampil. */
+  #product-grid .card-body {
+    padding: .38rem .28rem !important; min-height: 80px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .06rem;
+  }
+  #product-grid .card-title {
+    font-size: .76rem; line-height: 1.15; margin-bottom: 0; max-height: 3.7em;
+    white-space: normal; overflow: hidden;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
+  }
+  #product-grid p { font-size: .8rem !important; margin-bottom: 0; }
+  #product-grid small.text-muted { font-size: .68rem; }
+
+  .produk-indikator.ada {
+    display: block; margin-top: .3rem; text-align: center;
+    color: #475569; font-size: .78rem; font-weight: 600;
+  }
+}
+
+/* 768-991px: keranjang duduk di kolom samping sehingga ruang katalog tinggal ±340px. Dua kolom
+   (165px pada 834px) masih muat dibaca; tiga kolom akan jatuh ke ±105px. */
+@media (min-width: 768px) and (max-width: 991.98px) {
+  #product-grid .produk-kol { flex: 0 0 50%; max-width: 50%; }
+
+  /* Baris Total+BAYAR tidak boleh memaksa panel melebar keluar: dengan sidebar terbuka kolom
+     keranjang tinggal 178px pada 768px, dan satu baris "Total: Rp 122.500" + BAYAR (F4) butuh
+     ±225px sehingga tombolnya menjulur ke x=811 (di luar layar 768) dan tidak bisa diketuk.
+     Dibungkus: total di baris pertama, tombol satu baris penuh di bawahnya. */
+  .pos-stack .total-bayar { flex-wrap: wrap; }
+  .pos-stack .total-bayar .btn { flex: 1 1 auto; }
+}
+
+@media (max-width: 767.98px) {
+  /* Kolom pencarian dan tombol scan: 48 px supaya sebanding dengan kartu, dan angka di
+     dalamnya tetap 16px (di bawah itu iOS melakukan zoom-in saat fokus). */
+  .kasir-cari .form-control { min-height: 48px; font-size: 16px; }
+  .kasir-cari .btn { min-height: 48px; padding-left: .9rem; padding-right: .9rem; }
 }
 
 /* Tablet: laci sudah jadi sidebar tetap, tapi sentuhan masih diperbesar. */
@@ -129,10 +256,8 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
   .sidebar, .sidebar-backdrop, #sidebarToggle { display: none !important; }
 
   .app-main { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }
-  /* Halaman kasir sudah mengunci satu layar; sisa ruangnya cukup setinggi bar saja. */
-  .app-main:has(> .pos-stack) { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
-  /* Bilah bayar halaman kasir menempel di dasar; dinaikkan supaya tidak tertutup nav. */
-  .pos-checkout-bar { bottom: calc(64px + env(safe-area-inset-bottom)) !important; }
+  /* Bilah keranjang kasir (nav + lingkaran CTA + tingginya) sudah dihitung di blok KASIR di atas,
+     yang rentang media-nya sama persis dengan blok ini, jadi tidak diulang di sini. */
 
   .bottom-nav {
     display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0;
