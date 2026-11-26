@@ -74,8 +74,14 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
    (scan-gagal dipasang turunKeModeFoto), karena selama viewfinder jalan tombol itu cuma
    mengundang kasir memulai ulang kamera yang sedang dipakai. */
 .scan-aksi { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
-.btn-coba { display: none; }
-.scan-overlay.scan-gagal .btn-coba { display: inline-block; }
+/* Tombol .btn bawaan hanya ~38px tinggi: terlalu kecil untuk diketuk di HP sambil memegang
+   barang. Kedua tombol aksi dan tombol silang dinaikkan ke target sentuh 44px, isinya rata
+   tengah. Aturan persembunyian "Coba lagi" ikut memakai .scan-aksi supaya tidak kalah oleh
+   aturan ini — specificity-nya sama, yang menang ditulis belakangan. */
+.scan-aksi .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; }
+.scan-atas .btn { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; }
+.scan-aksi .btn-coba { display: none; }
+.scan-overlay.scan-gagal .scan-aksi .btn-coba { display: inline-flex; }
 /* Mode foto: tidak ada stream yang ditampilkan, jadi area kamera ditutup dan petunjuknya yang
    mengambil ruang itu. */
 .scan-overlay.scan-mode-foto .scan-video { display: none; }

@@ -324,6 +324,34 @@ Kamera dimatikan lewat `stop()+clear()` saat overlay ditutup (tombol X atau **Es
 menahan LED scanner. `escHtml()` dipasang pada nama produk di keranjang karena teks yang terbaca
 dari kamera (isi QRIS, kode supplier) ikut dirender sebagai baris.
 
+### Scan barcode saat menambah produk (`/produk`)
+
+Di modal **Tambah Produk**, kolom Barcode kini punya tombol kamera. Fungsinya sengaja kecil:
+**satu kode terbaca → kolom terisi → pemindai menutup sendiri** (`padaKodeScan` memanggil
+`stop()` sebelum mengisi). Tidak ada jalur keranjang dan tidak ada pengulangan 2,2 detik seperti di
+`/kasir`, karena halaman ini menambahkan barang baru, bukan menjualnya. Kamera, daftar format, dan
+gaya overlay memakai pustaka yang sama (`/vendor/html5-qrcode/`) dan CSS yang sama
+(`.scan-overlay`), jadi layar kasir tidak ikut disentuh.
+
+Yang perlu diketahui:
+
+- **Butuh `https://` untuk scan terus-menerus**, sama seperti di kasir. Kalau halaman dibuka lewat
+  `http://192.168.x.x:3000`, tombolnya langsung jatuh ke mode potret (kamera bawaan HP memotret,
+  fotonya dibaca) — tetap jalan, hanya satu potret per barcode.
+- **Barcode yang sudah dipakai tidak lagi berakhir di halaman 500.** `products.barcode` ber-UNIQUE
+  dan `/produk/add` membalas "Gagal: Barcode sudah digunakan!" — sekarang tabrakannya dikenali di
+  halaman (daftar produknya memang sudah dirender di situ) dan menawarkan dua pilihan: **OK**
+  membuka produk itu di modal Edit, **Batal** mengisi kolom dengan kode acak baru. Guard yang sama
+  dipasang pada tombol Simpan, jadi ketikan manual dan scanner USB ikut terjaring.
+- **Escape menutup pemindai saja**, modal Tambah tetap terbuka. Ini perlu fase *capture*: Bootstrap
+  memasang pendengar ESC di elemen modalnya sendiri, jadi handler di level document biasa kalah
+  langkah dan yang tertutup malah modalnya.
+- **Tombol pemindai dinaikkan ke target sentuh 44px** (bawaannya 38–42px) — `Coba lagi`,
+  `Scan dari foto`, dan tombol silang, di halaman kasir maupun produk.
+- Kalau kamera menolak: baris status menyebut sebabnya (izin belum diberikan / kamera dipegang tab
+  lain / tidak ada kamera belakang) + tombol **Coba lagi**, bukan sekadar "pakai mode foto".
+  Lihat tabel pemetaan error di atas untuk langkah di Chrome HP.
+
 ## Kategori produk
 Aplikasi ini dipakai untuk jenis usaha apa pun, jadi daftarnya bukan daftar tetap. Tabel `categories`
 sejak awal sudah ada (`id`, `name` UNIQUE, `description`) tetapi satu-satunya isinya adalah seed

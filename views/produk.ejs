@@ -145,6 +145,8 @@
           <label class='form-label'>Barcode / SKU <small class='text-muted'>(Auto / Bisa Diedit / Scan Barcode)</small></label>
           <div class='input-group'>
             <input type='text' name='barcode' id='add_product_barcode' class='form-control fw-bold' required placeholder='Scan barcode atau gunakan auto'>
+            <button class='btn btn-primary' type='button' onclick='bukaPemindaiBarcode()'
+                    title='Scan barcode dengan kamera' aria-label='Scan barcode dengan kamera' aria-haspopup='dialog'><i class='bi bi-camera-fill'></i></button>
             <button class='btn btn-outline-secondary' type='button' onclick='generateProductBarcode()'><i class='bi bi-shuffle'></i> Acak</button>
           </div>
         </div>
@@ -178,6 +180,28 @@
       <div class='modal-footer'><button type='submit' class='btn btn-primary'>Simpan Produk</button></div>
     </form>
   </div>
+  <% /* Pemindai duduk DI DALAM #modalAddProduct, bukan di level body seperti di /kasir: Bootstrap 5
+         mengunci focus di dalam modal yang terbuka, dan elemen di luar modal akan terus ditarik
+         kembali sehingga tombol overlay tidak bisa diketuk. Di sini overlay tetap layar penuh karena
+         position:fixed dan .modal tidak punya transform (yang jadi_parent transform akan mengurung
+         posisi fixed). */ %>
+  <div class='scan-overlay is-hidden' id='scanOverlay' role='dialog' aria-modal='true' aria-label='Scan barcode untuk produk'>
+    <div class='scan-atas'>
+      <div class='scan-judul' id='scanJudul'>Arahkan barcode ke dalam bingkai</div>
+      <button type='button' class='btn btn-sm btn-light' onclick='tutupPemindaiBarcode()' aria-label='Tutup pemindai'><i class='bi bi-x-lg'></i></button>
+    </div>
+    <div class='scan-video' id='scan-video'></div>
+    <div class='scan-status' id='scanStatus' aria-live='polite'></div>
+    <div class='scan-bawah'>
+      <div class='scan-aksi'>
+        <button type='button' class='btn btn-outline-light btn-coba' id='btnCobaLagi' onclick='bukaPemindaiBarcode()'><i class='bi bi-arrow-clockwise me-1'></i>Coba lagi</button>
+        <button type='button' class='btn btn-outline-light' id='btnScanFoto' onclick='scanDariFoto()'><i class='bi bi-camera me-1'></i>Ambil foto barcode</button>
+      </div>
+      <div class='scan-kecil' id='scanPetunjuk'>Satu barcode terbaca langsung mengisi kolom, pemindai menutup sendiri.</div>
+      <div class='scan-kecil scan-alternatif' id='scanAlternatif' aria-live='polite'></div>
+    </div>
+  </div>
+  <input type='file' accept='image/*' capture='environment' id='scanFoto' class='d-none' aria-hidden='true' tabindex='-1'>
 </div>
 
 <!-- Modal Edit -->
@@ -245,5 +269,210 @@ function editProduct(p) {
     document.getElementById('edit_stock_display').value = 'Stok cabang ini: ' + p.branch_stock + ' | semua cabang: ' + p.total_stock;
     new bootstrap.Modal(document.getElementById('modalEditProduct')).show();
 }
+</script>
+
+<script src='/vendor/html5-qrcode/html5-qrcode.min.js'></script>
+<script>
+<% /* Daftar barcode yang sudah ada diambil dari data halaman ini sendiri: query /produk memang
+       mengembalikan SELURUH produk (bukan per cabang), jadi tabrakan kode bisa dikenal tanpa
+       meminta rute baru. Perlu ada karena products.barcode UNIQUE dan /produk/add membalas
+       halaman 500 "Gagal: Barcode sudah digunakan!" kalau kode yang sama dikirim dua kali. */ %>
+const SUDAH_ADA = <%- JSON.stringify(products.map(p => ({ id: p.id, barcode: String(p.barcode || ''),
+  name: p.name, category_id: p.category_id, price_buy: p.price_buy, price_sell: p.price_sell,
+  branch_stock: p.branch_stock, total_stock: p.total_stock }))).replace(/</g, '\\u003c') %>;
+
+// ==================== SCAN BARCODE UNTUK FORM PRODUK ====================
+// Kamera yang sama dengan layar kasir, tapi satu kode = satu isian: viewfinder berhenti setelah
+// kode pertama terbaca dan tidak ada jalur keranjang di sini. Plumbenya ditulis ulang, bukan
+// dipinjam dari views/kasir.ejs, supaya layar kasir yang sudah jalan tidak ikut disentuh; kalau
+// nanti disatukan, keduanya harus lewat gerbang yang sama (bentuk constraint dan daftar format
+// diperiksa di cek-sintaks.js agar tidak bisa berbeda tanpa sengaja).
+const F_PUSTAKA = window.Html5QrcodeSupportedFormats;
+const SCAN_FORMAT = F_PUSTAKA ? [F_PUSTAKA.CODE_128, F_PUSTAKA.CODE_39, F_PUSTAKA.ITF, F_PUSTAKA.EAN_13,
+  F_PUSTAKA.EAN_8, F_PUSTAKA.UPC_A, F_PUSTAKA.UPC_E, F_PUSTAKA.QR_CODE] : null;
+
+const scanOverlay = document.getElementById('scanOverlay');
+const scanJudul = document.getElementById('scanJudul');
+const scanStatus = document.getElementById('scanStatus');
+const scanPetunjuk = document.getElementById('scanPetunjuk');
+const scanAlternatif = document.getElementById('scanAlternatif');
+const btnScanFoto = document.getElementById('btnScanFoto');
+const scanFoto = document.getElementById('scanFoto');
+const kolomBarcode = document.getElementById('add_product_barcode');
+
+let pemindai = null;
+
+function statusScan(teks, jenis) {
+  scanStatus.textContent = teks || '';
+  scanStatus.className = 'scan-status' + (jenis ? ' ' + jenis : '');
+}
+
+function siapViewfinder() {
+  // getUserMedia hanya hidup di secure context: https:// (tunnel) atau localhost.
+  return !!(window.Html5Qrcode && SCAN_FORMAT && window.isSecureContext
+    && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+function wadahPemindai() {
+  if (!pemindai) pemindai = new window.Html5Qrcode('scan-video',
+    { verbose: false, formatsToSupport: SCAN_FORMAT, useBarCodeDetectorIfSupported: true });
+  return pemindai;
+}
+
+async function hentikanPemindai() {
+  const p = pemindai;
+  pemindai = null;
+  if (!p) return;
+  try { await p.stop(); } catch (err) { /* belum sempat jalan atau sudah berhenti */ }
+  try { p.clear(); } catch (err) {}
+}
+
+function tampilkanOverlay(modeFoto) {
+  scanOverlay.classList.toggle('scan-mode-foto', !!modeFoto);
+  scanOverlay.classList.remove('scan-gagal', 'is-hidden');
+  scanJudul.textContent = modeFoto ? 'Potret barcode: seluruh garis + tepi putih masuk bingkai'
+    : 'Arahkan barcode ke dalam bingkai';
+  btnScanFoto.innerHTML = modeFoto ? '<i class="bi bi-camera"></i> Potret ulang'
+    : '<i class="bi bi-camera"></i> Scan dari foto';
+  scanPetunjuk.textContent = modeFoto
+    ? 'Kamera HP dibuka untuk tiap potret. Barcode yang terbaca mengisi kolom di belakang layar ini.'
+    : 'Satu barcode terbaca langsung mengisi kolom, pemindai menutup sendiri.';
+  scanAlternatif.textContent = (modeFoto && !window.isSecureContext)
+    ? 'Scan tanpa potret butuh https:// - halaman ini membuka ' + location.origin : '';
+}
+
+async function bukaPemindaiBarcode() {
+  if (!siapViewfinder()) { scanDariFoto(); return; }
+  tampilkanOverlay(false);
+  statusScan('Menyiapkan kamera...');
+  try {
+    // facingMode dikirim sebagai string polos: createVideoConstraints() di dalam bundel menolak
+    // objek dengan lebih dari satu kunci dan hanya mengenal {exact: ...} — {ideal: ...} dibalas
+    // "'facingMode' should be string or object with exact as key" sebelum browser menyentuh
+    // kamera. String juga yang paling longgar: browser memakainya sebagai ideal, jadi laptop
+    // tanpa kamera belakang tetap dapat webcam.
+    await wadahPemindai().start({ facingMode: 'environment' },
+      {
+        fps: 10,
+        qrbox: (vw, vh) => {
+          const lebar = Math.round(Math.min(vw * 0.9, 340));
+          return { width: lebar, height: Math.round(Math.min(lebar * 0.45, vh * 0.45)) };
+        },
+        rememberLastUsedCamera: true
+      },
+      padaKodeScan, () => { /* frame tanpa kode: bukan error */ });
+    statusScan('');
+  } catch (err) {
+    await hentikanPemindai();
+    tampilkanOverlay(true);
+    scanOverlay.classList.add('scan-gagal');
+    statusScan(sebabKamera(err) + ' Foto juga bisa dipakai.', 'gagal');
+  }
+}
+
+// Satu kode lalu selesai - form produk tidak menampung barcode bertubi-tubi seperti kasir.
+async function padaKodeScan(kode) {
+  const bersih = String(kode || '').trim();
+  if (!bersih) return;
+  await hentikanPemindai();
+  scanOverlay.classList.add('is-hidden');
+  statusScan('');
+  isiBarcode(bersih);
+}
+
+function sebabKamera(err) {
+  const teks = String((err && err.name) || '') + ' ' + String((err && err.message) || err || '');
+  if (/NotAllowedError|Permission|denied|not allowed|permission policy/i.test(teks)) {
+    return 'Izin kamera belum diberikan untuk ' + location.host + '. Ketuk ikon gembok di bilah alamat Chrome, pilih Izinkan, lalu muat ulang halaman.';
+  }
+  if (/NotReadableError|TrackStart|AbortError|in use|busy/i.test(teks)) {
+    return 'Kamera sedang dipegang tab atau aplikasi lain. Tutup itu, lalu ketuk "Coba lagi".';
+  }
+  if (/NotFoundError|DevicesNotFound/i.test(teks)) return 'Perangkat ini tidak punya kamera yang bisa dipakai halaman.';
+  if (/OverconstrainedError|ConstraintNotSatisfied/i.test(teks)) return 'Kamera belakang tidak tersedia di perangkat ini.';
+  return 'Kamera tidak bisa dibuka (' + (teks.trim() || 'tanpa nama error') + ').';
+}
+
+// Jalur kedua, bekerja di mana saja (bukan getUserMedia): kamera bawaan HP memotret, fotonya dibaca.
+function scanDariFoto() {
+  if (!window.Html5Qrcode || !SCAN_FORMAT) {
+    alert('Pustaka pemindai belum ada di perangkat ini. Buka halaman ini sekali saat server kasir hidup (agar asetnya terunduh), lalu coba lagi.');
+    return;
+  }
+  tampilkanOverlay(true);
+  if (pemindai) hentikanPemindai();
+  statusScan('Kamera HP belum terbuka? Ketuk "Potret ulang".');
+  scanFoto.click();
+}
+
+async function padaFotoSelesai(ev) {
+  const berkas = ev.target.files && ev.target.files[0];
+  ev.target.value = '';
+  if (!berkas) return;
+  tampilkanOverlay(true);
+  statusScan('Membaca foto ' + berkas.name + '...');
+  try {
+    const kode = await wadahPemindai().scanFile(berkas, false);
+    await hentikanPemindai();
+    scanOverlay.classList.add('is-hidden');
+    statusScan('');
+    isiBarcode(String(kode || '').trim());
+  } catch (err) {
+    statusScan('Barcode tidak terbaca dari foto itu. Potret lebih dekat, tegak lurus, jangan sampai ujung garis terpotong.', 'gagal');
+  }
+}
+
+function isiBarcode(bersih) {
+  if (!bersih) return;
+  const lama = SUDAH_ADA.find(x => x.barcode === bersih);
+  if (lama) { tabrakBarcode(lama); return; }
+  kolomBarcode.value = bersih;
+  // Kolom nama berikutnya: yang mengetuk scanner biasanya lanjut mengetik nama, tidak perlu
+  // mencari kolomnya dulu.
+  const nama = document.querySelector('#modalAddProduct [name="name"]');
+  if (nama) nama.focus();
+}
+
+// Tabrakan kode diselesaikan di sini, bukan di server (server hanya balas halaman 500).
+function tabrakBarcode(lama) {
+  const lanjut = window.confirm('Barcode ' + lama.barcode + ' sudah dipakai "' + lama.name + '".\n\n'
+    + 'OK = buka produk itu untuk diedit (satu kode hanya boleh untuk satu produk).\n'
+    + 'Batal = kolom barcode diisi kode acak baru.');
+  if (!lanjut) { generateProductBarcode(); kolomBarcode.focus(); return; }
+  // Tambah ditutup dulu, Edit dibuka setelahnya - dua modal tidak pernah tampil bersamaan, jadi
+  // backdrop dan penguncian gulir halaman tetap milik satu modal saja. Kalau Tambah ternyata
+  // sudah tertutup (kode kembar diketahui lewat tombol Simpan setelah modalnya tertutup sendiri),
+  // Edit langsung dibuka.
+  const modalTambah = document.getElementById('modalAddProduct');
+  if (!modalTambah.classList.contains('show')) { editProduct(lama); return; }
+  modalTambah.addEventListener('hidden.bs.modal', () => editProduct(lama), { once: true });
+  const terbuka = bootstrap.Modal.getInstance(modalTambah);
+  if (terbuka) terbuka.hide();
+}
+
+function tutupPemindaiBarcode() {
+  scanOverlay.classList.add('is-hidden');
+  statusScan('');
+  hentikanPemindai();
+}
+
+// Scanner USB dan ketikan manual lewat jalur yang sama: kalau kodenya sudah ada, simpan tidak
+// pernah dikirim - sebelumnya formulir ini berakhir di halaman 500 "Barcode sudah digunakan".
+document.querySelector('#modalAddProduct form').addEventListener('submit', (e) => {
+  const nilai = String(kolomBarcode.value || '').trim();
+  if (!nilai) return;
+  const lama = SUDAH_ADA.find(x => x.barcode === nilai);
+  if (!lama) return;
+  e.preventDefault();
+  tabrakBarcode(lama);
+});
+
+scanFoto.addEventListener('change', padaFotoSelesai);
+// Fase capture, bukan bubble: Bootstrap memasang pendengar ESC di elemen modal itu sendiri, jadi
+// handler di level document baru sempat bekerja setelah modalnya menutup sendiri.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !scanOverlay.classList.contains('is-hidden')) { e.preventDefault(); e.stopPropagation(); tutupPemindaiBarcode(); }
+}, true);
+addEventListener('pagehide', () => { if (!scanOverlay.classList.contains('is-hidden')) hentikanPemindai(); });
 </script>
 <%- include('layout-footer') %>
