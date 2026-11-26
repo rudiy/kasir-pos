@@ -1,6 +1,21 @@
 :root { --navy: #0F172A; --gold: #F59E0B; --green: #10B981; --sidebar-w: 250px; }
 body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
-.sidebar { background-color: var(--navy); min-height: 100vh; color: white; transition: all 0.3s ease; }
+/* Sidebar tidak boleh ikut meregangkan dokumen: dulu hanya `min-height: 100vh`, jadi daftar menu
+   (1125px) menarik .app-shell ke 1281px pada layar 1112px dan sisanya jadi ruang gulir kosong -
+   digulir ke bawah, seluruh isi .app-main (100dvh, menggulir di dalam dirinya sendiri) naik keluar
+   layar dan yang tersisa cuma panel gelap. Sekarang kolomnya setinggi layar dan yang menggulir
+   hanya daftar menunya; logo serta nama pengguna tinggal di atas. */
+.sidebar {
+  background-color: var(--navy); color: white; transition: all 0.3s ease;
+  height: 100vh; height: 100dvh; display: flex; flex-direction: column;
+}
+.sidebar > :not(.sidebar-menu) { flex: 0 0 auto; }
+/* Daftarnya yang menggulir, dan tanpa bilah gulir terlihat: `scrollbar-width: thin` memakan
+   10px dari 218px lebar menu sehingga "Transfer Antar Cabang" dan "Pengeluaran Operasional"
+   jatuh jadi dua baris (44px -> 68px). Roda tetikus, seretan sentuh dan Tab tetap menggulir,
+   dan baris terakhir yang terpotong sudah cukup sebagai tanda daftarnya masih panjang. */
+.sidebar-menu { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.sidebar-menu::-webkit-scrollbar { display: none; }
 .sidebar.hidden { margin-left: calc(-1 * var(--sidebar-w)); }
 .sidebar a { color: #cbd5e1; text-decoration: none; padding: 10px 15px; display: block; border-radius: 5px; }
 .sidebar a:hover { background-color: #1E293B; color: white; }
@@ -70,8 +85,9 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
 
 /* HP & tablet kecil: sidebar jadi laci yang menutupi layar. */
 @media (max-width: 767.98px) {
+  /* Laci: tingginya ditentukan top/bottom (bukan 100dvh) supaya ikut garis aman layar HP. */
   .sidebar {
-    position: fixed; top: 0; left: 0; bottom: 0; min-height: 0; width: 82vw; max-width: 320px;
+    position: fixed; top: 0; left: 0; bottom: 0; min-height: 0; height: auto; width: 82vw; max-width: 320px;
     transform: translateX(-100%); transition: transform .25s ease; z-index: 1050; overflow-y: auto;
   }
   body.sidebar-open .sidebar { transform: translateX(0); box-shadow: 4px 0 28px rgba(15, 23, 42, .45); }
@@ -224,11 +240,15 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
    (165px pada 834px) masih muat dibaca; tiga kolom akan jatuh ke ±105px. */
 @media (min-width: 768px) and (max-width: 991.98px) {
   #product-grid .produk-kol { flex: 0 0 50%; max-width: 50%; }
+}
 
-  /* Baris Total+BAYAR tidak boleh memaksa panel melebar keluar: dengan sidebar terbuka kolom
-     keranjang tinggal 178px pada 768px, dan satu baris "Total: Rp 122.500" + BAYAR (F4) butuh
-     ±225px sehingga tombolnya menjulur ke x=811 (di luar layar 768) dan tidak bisa diketuk.
-     Dibungkus: total di baris pertama, tombol satu baris penuh di bawahnya. */
+/* Baris Total+BAYAR tidak boleh memaksa panel melebar keluar: dengan sidebar terbuka kolom
+   keranjang tinggal 178px pada 768px, dan satu baris "Total: Rp 122.500" + BAYAR (F4) butuh
+   ±225px sehingga tombolnya menjulur ke x=811 (di luar layar 768) dan tidak bisa diketuk.
+   Dibungkus: total di baris pertama, tombol satu baris penuh di bawahnya. Rentangnya sampai
+   1199,98px karena di 992px dengan menu terbuka tombolnya sempat melebar dua baris (tinggi 82px)
+   alih-alih pindah ke baris sendiri; di >= 1200px ruangannya cukup jadi tidak pernah dibungkus. */
+@media (min-width: 768px) and (max-width: 1199.98px) {
   .pos-stack .total-bayar { flex-wrap: wrap; }
   .pos-stack .total-bayar .btn { flex: 1 1 auto; }
 }

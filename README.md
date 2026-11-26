@@ -626,10 +626,22 @@ helper `getBranchScope` menentukan cabang mana yang dipakai suatu query.
   dipakai, hanya sisa gulirnya kembali angka nav biasa (78px). Di ≥ 992px layout lama tidak berubah:
   panel 321px di kanan pada 992×800 dan 417px pada 1280×800. Klik kartu tetap menambah badge di
   semua lebar yang diuji (390/768/834/991/1280) dan `showPaymentModal()` membuka layar penuh.
-  Yang belum rapi dan sudah ada sejak sebelum perubahan ini: di ≥ 768px `scrollHeight` dokumen
-  1281px padahal `.app-main` setinggi layar (834×1112), karena `.sidebar` bertuliskan
-  `min-height: 100vh` dan menunya sendiri tingginya 1125px — halaman tetap bisa digulir, isinya tidak
-  terpotong, dan angka yang sama berlaku di mesin kasir 1280×800.
+- **Sidebar tidak lagi menambah ruang gulir kosong.** Dulu `.sidebar` hanya `min-height: 100vh`,
+  sedangkan daftar menunya sendiri 1173px: pada 834×1112 `.app-shell` ikut tertarik ke **1281px**
+  sementara `.app-main` sudah `100dvh` + `overflow-auto` dan menggulir di dalam dirinya — hasilnya
+  dokumen masih bisa digulir ±170px (±481px pada 1280×800) dan begitu digulir ke bawah seluruh isi
+  halaman naik keluar layar, yang tersisa cuma panel menu gelap. Sekarang kolomnya
+  `height: 100dvh; display: flex; flex-direction: column` dan **yang menggulir hanya
+  `.sidebar-menu`** (`flex: 1 1 auto; min-height: 0; overflow-y: auto`), logo + nama pengguna tinggal
+  di atas. Terukur `scrollHeight` dokumen = tinggi viewport di 390/768/834/991/992/1280, baik
+  sidebar tertutup maupun terbuka, dan menu tetap lengkap: 169px bisa digulir di dalam kolomnya pada
+  834px, 417px pada 1280×800 (terbukti `scrollTop = 420` benar-benar memindahkan daftarnya).
+  Bilah gulirnya disembunyikan (`scrollbar-width: none` + `::-webkit-scrollbar{display:none}`)
+  karena `scrollbar-width: thin` sempat memakan 10px dari 218px lebar menu dan membuat
+  "Transfer Antar Cabang" / "Pengeluaran Operasional" jatuh jadi dua baris (44px → 68px); dengan
+  bilah tersembunyi lebar tautan kembali persis seperti dulu (218px pada 250px, 188px pada 220px) dan
+  menggulir tetap bisa lewat roda tetikus, seretan, atau Tab. Di HP (≤ 767,98px) sidebar memang
+  `display: none` — menggantikannya sheet "Lainnya" — jadi perubahan ini tidak menyentuh laci.
 - Bar bawah tingginya ditambah `env(safe-area-inset-bottom)` (dengan `viewport-fit=cover` di
   `layout-header.ejs`) supaya tidak tertutup gesture bar; isi `.app-main` dan bilah bayar di
   `/kasir` dinaikkan setinggi bar tersebut agar tetap bisa disentuh.
