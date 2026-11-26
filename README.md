@@ -292,7 +292,7 @@ Android (bukan di aplikasinya):
 Pustaka: `html5-qrcode@2.3.8` (375 KB, Apache-2.0) diambil ke `public/vendor/html5-qrcode/` —
 bukan CDN, tidak ada dependensi npm baru, jadi `git pull` + `npm run dev` di mesin kasir tetap
 cukup dan pemindai tetap jalan saat internet mati. Berkasnya ikut didaftarkan di `SHELL`
-`public/sw.js` dan penanda cache statis dinaikkan (`kasir-statis-v5`) supaya klien membuang
+`public/sw.js` dan penanda cache statis dinaikkan (`kasir-statis-v6`) supaya klien membuang
 salinan lama. Decoder yang dipakai: `BarcodeDetector` bawaan browser bila ada, kalau tidak
 decoder bawaan pustaka (`useBarCodeDetectorIfSupported: true`). iOS Safari tidak punya
 `BarcodeDetector` sama sekali, jadi di iPhone yang bekerja jalur bundel — dan browser yang dipakai
@@ -1071,6 +1071,14 @@ kasir tetap bisa dipakai lewat alamat LAN, dengan struk QRIS dan harga yang ters
   permintaan jatuh ke cache sehingga kasir tetap melihat halaman terakhir yang pernah
   dibuka; URL yang belum pernah dibuka diarahkan ke salinan halaman login, bukan layar
   error browser. Aset statis memakai cache-first lalu diperbarui diam-diam.
+- Aset statis yang **tidak ada di server** tidak menghasilkan 404: `express.static`
+  (server.js:31) dipasang sebelum penjaga login, jadi permintaan menembus ke
+  `isAuthenticated` (server.js:120) dan dijawab **302 → /login → 200 `text/html` ±1 KB**.
+  Browser menganggapnya muatan JavaScript yang gagal, dan service worker yang menyimpan
+  jawaban "baik" akan menyimpan halaman login itu di bawah nama file JS — HP-nya rusak
+  permanen. Karena itu `staleWhileRevalidate` menolak menyimpan respons yang
+  `redirected`, dan `STATIC_CACHE` dinaikkan ke `kasir-statis-v6` supaya HP yang terlanjur
+  menyimpan salinan salah membersihkannya sendiri saat service worker aktif.
 - Yang **tidak** dijamin offline: membuat transaksi baru. Stok, harga, dan struk dihitung
   di server, jadi saat server tak terjangkau layar hanya menampilkan bacaan terakhir dan
   tidak bisa dipakai menjual. Antrean transaksi offline (outbox) adalah fitur terpisah.
@@ -1092,6 +1100,15 @@ kasir tetap bisa dipakai lewat alamat LAN, dengan struk QRIS dan harga yang ters
   baris sesinya kedaluwarsa (masa berlaku 24 jam, diatur di `config/sessionStore.js`).
 - Perubahan `.ejs` tidak tampak — pastikan `NODE_ENV=development`; pada mode production
   Express meng-cache hasil render dan menyembunyikan detail error.
+- Tombol scan di **satu HP** menjawab "Pustaka pemindai belum ada di perangkat ini" padahal
+  HP lain normal — hampir selalu `public/vendor/html5-qrcode/` hilang di server, bukan salah
+  HP-nya. Ciri ukurnya: `curl -I https://<host>/vendor/html5-qrcode/html5-qrcode.min.js`
+  menjawab `302 → /login` (HP yang normal tidak pernah menanyakan itu karena service worker
+  masih punya salinannya). Pulihkan di server dengan `git status` lalu
+  `git checkout HEAD -- public/vendor/html5-qrcode`, atau salin ulang dua berkasnya
+  (`html5-qrcode.min.js` 375.364 byte + `LICENSE`) kalau server bukan hasil `git clone`.
+  Setelah file kembali, HP yang cache-nya sempat terisi halaman login ikut bersih sendiri
+  karena `STATIC_CACHE` sudah `v6` — cukup muat ulang halaman dua kali.
 
 ## Catatan keamanan
 - `.env` tidak dilacak git. Nilai `SESSION_SECRET` lama masih ada di history commit

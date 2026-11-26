@@ -4,7 +4,9 @@
 // atau server mati kasir tetap melihat halaman terakhir, dan begitu nyala kembali
 // tampilannya langsung ikut versi terbaru tanpa perlu reinstall.
 // Naikkan angka ini tiap kali bentuk aset berubah supaya klien membuang cache lama.
-const STATIC_CACHE = 'kasir-statis-v5';
+// v6: dibuang paksa karena v5 bisa menampung halaman login yang tersimpan sebagai file JS
+// (lihat staleWhileRevalidate) - itu penyebab tombol scan menjawab "pustaka belum ada".
+const STATIC_CACHE = 'kasir-statis-v6';
 const PAGE_CACHE = 'kasir-halaman-v3';
 // Hanya aset yang URL-nya tetap. style.css di-request dengan ?v=<penanda versi>,
 // jadi ikut ter-cache saat pertama kali diambil, tidak perlu diprecache di sini.
@@ -79,7 +81,10 @@ async function staleWhileRevalidate(request) {
     const cache = await caches.open(STATIC_CACHE);
     const saved = await cache.match(request);
     const refresh = fetch(request).then((fresh) => {
-        if (fresh && fresh.ok) cache.put(request, fresh.clone());
+        // Respons yang kena redirect berarti server tidak punya aset itu: aset pemindai yang
+        // hilang dilayani sebagai halaman login (200 text/html). Kalau ikut disimpan, HP akan
+        // selamanya memuat halaman login sebagai JavaScript dan tombol scan mati terus.
+        if (fresh && fresh.ok && !fresh.redirected) cache.put(request, fresh.clone());
         return fresh;
     }).catch(() => null);
     return saved || await refresh || new Response('aset tidak tersedia', { status: 504 });

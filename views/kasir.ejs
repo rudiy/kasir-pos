@@ -862,7 +862,7 @@ function bukaPemindai() {
 // capture yang diizinkan browser di konteks apa pun.
 function mulaiModeFoto() {
   if (!window.Html5Qrcode || !SCAN_FORMAT) {
-    alert('Pustaka pemindai belum ada di perangkat ini. Buka halaman ini sekali saat server kasir hidup (agar asetnya terunduh), lalu coba lagi.');
+    alert('Pustaka pemindai belum ada di perangkat ini. Muat ulang halaman ini dua kali - kalau masih begitu, buka /vendor/html5-qrcode/html5-qrcode.min.js di tab baru: kalau yang muncul halaman login, file pemindai tidak ada di server kasir dan harus dipulihkan di sana.');
     return;
   }
   siapkanAudio();

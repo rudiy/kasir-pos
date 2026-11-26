@@ -437,7 +437,7 @@ function sebabKamera(err) {
 // Jalur kedua, bekerja di mana saja (bukan getUserMedia): kamera bawaan HP memotret, fotonya dibaca.
 function scanDariFoto() {
   if (!window.Html5Qrcode || !SCAN_FORMAT) {
-    alert('Pustaka pemindai belum ada di perangkat ini. Buka halaman ini sekali saat server kasir hidup (agar asetnya terunduh), lalu coba lagi.');
+    alert('Pustaka pemindai belum ada di perangkat ini. Muat ulang halaman ini dua kali - kalau masih begitu, buka /vendor/html5-qrcode/html5-qrcode.min.js di tab baru: kalau yang muncul halaman login, file pemindai tidak ada di server kasir dan harus dipulihkan di sana.');
     return;
   }
   tampilkanOverlay(true);
