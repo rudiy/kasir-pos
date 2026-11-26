@@ -61,6 +61,8 @@
 
     <hr class='text-secondary'>
     <a href='/ganti-sandi' class='<%= typeof path !== "undefined" && path === "/ganti-sandi" ? "bg-secondary" : "" %>'><i class='bi bi-key me-2'></i> Ganti Sandi</a>
+    <% /* Semua role boleh masuk: yang memegang HP bermasalah sering kasir, bukan admin. */ %>
+    <a href='/cek-pemindai' class='<%= typeof path !== "undefined" && path === "/cek-pemindai" ? "bg-secondary" : "" %>'><i class='bi bi-camera-reels me-2'></i> Cek Pemindai</a>
     <a href='/logout' class='text-danger'><i class='bi bi-box-arrow-left me-2'></i> Logout</a>
     </div>
   </div>

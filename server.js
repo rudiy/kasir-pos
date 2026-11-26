@@ -22,11 +22,19 @@ app.set('view engine', 'ejs');
 
 // Penanda versi style.css. Service worker meng-cache berdasarkan URL penuh, jadi
 // tanpa penanda ini klien bisa terus memakai CSS lama setelah file-nya diubah.
-const ASSET_VER = (() => {
-  try { return require('fs').statSync(path.join(__dirname, 'public/css/style.css')).mtimeMs.toString(36); }
-  catch (err) { return 'dev'; }
-})();
-app.use((req, res, next) => { res.locals.assetVer = ASSET_VER; next(); });
+const PUSTAKA_PEMINDAI = 'vendor/html5-qrcode/html5-qrcode.min.js';
+const capAset = (rel) => {
+  try { return fs.statSync(path.join(__dirname, 'public', rel)).mtimeMs.toString(36); }
+  catch (err) { return 'hilang'; }
+};
+app.use((req, res, next) => {
+  res.locals.assetVer = capAset('css/style.css');
+  // URL file pemindai ikut berubah begitu isinya berubah. Tanpa ini, satu salinan lama
+  // (halaman login atau "Cannot GET" yang sempat tersimpan) bisa dipakai HP terus sampai
+  // 4 jam walau server-nya sudah benar.
+  res.locals.verPemindai = capAset(PUSTAKA_PEMINDAI);
+  next();
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
@@ -1467,12 +1475,35 @@ app.get('/backup/berkas/:nama', isAdmin, (req, res) => {
 });
 
 
+// Layar kecil untuk memeriksa satu HP juga: keempat barisnya dibaca di perangkat itu sendiri
+// (pustaka ter-load, aset di server, salinan di cache HP, hak akses kamera) dan tidak mengubah
+// apa pun di alur kasir.
+app.get('/cek-pemindai', (req, res) => {
+    let ukuran = 0;
+    try { ukuran = fs.statSync(path.join(__dirname, 'public', PUSTAKA_PEMINDAI)).size; } catch (err) { ukuran = 0; }
+    res.render('cek-pemindai', { asetPemindai: '/' + PUSTAKA_PEMINDAI, ukuranSeharusnya: ukuran });
+});
+
 const PORT = process.env.PORT || 3000;
 const BACKUP_INTERVAL_MIN = Number(process.env.BACKUP_INTERVAL_MIN ?? 60);
 const EMAIL_CEK_MIN = Number(process.env.EMAIL_BACKUP_INTERVAL_MIN ?? 5);
 
 app.listen(PORT, () => {
     console.log('[SERVER] KASIR POS berjalan di http://localhost:' + PORT);
+    // Berkas pemindai pernah terhapus di folder kerja dan `git pull` tidak mengembalikannya
+    // (file itu tidak berubah di commit mana pun), jadi pemberitahuan ini yang menyadarkan
+    // pada hari yang sama, bukan saat ada pelanggan yang scan-nya gagal.
+    try {
+        const penuh = path.join(__dirname, 'public', PUSTAKA_PEMINDAI);
+        const ukuran = fs.statSync(penuh).size;
+        if (ukuran < 100000) {
+            console.log('[pemindai] file-nya ada tapi cuma ' + ukuran + ' byte (seharusnya ±375.364) — '
+                + 'kemungkinan rusak: git checkout HEAD -- public/vendor/html5-qrcode');
+        }
+    } catch (err) {
+        console.log('[pemindai] MATI: ' + PUSTAKA_PEMINDAI + ' tidak ada di disk. Pulihkan dengan: '
+            + 'git checkout HEAD -- public/vendor/html5-qrcode');
+    }
     if (BACKUP_INTERVAL_MIN > 0) {
         runBackup();
         setInterval(runBackup, BACKUP_INTERVAL_MIN * 60000).unref();

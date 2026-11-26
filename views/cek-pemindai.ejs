@@ -1,0 +1,238 @@
+<%- include('layout-header') %>
+<%
+  // Semua baris di halaman ini dibaca di perangkat yang sedang memegang HP-nya. Server hanya
+  // menyodorkan dua hal: alamat file pemindai dan ukuran file itu di disk server, supaya
+  // halaman bisa membedakan "file-nya tidak ada" dari "file-nya terpotong di tengah jalan".
+  const DATA_PEMERIKSAAN = JSON.stringify({
+    aset: asetPemindai,
+    ukuranSeharusnya: ukuranSeharusnya,
+    versi: typeof verPemindai !== 'undefined' ? verPemindai : 'tanpa penanda'
+  }).replace(/</g, '\\u003c');
+%>
+<div class='p-4'>
+  <div class='mb-3'>
+    <h2 class='mb-1'>Cek Pemindai</h2>
+    <small class='text-muted'>Dipakai kalau tombol scan di satu HP menolak padahal HP lain bisa. Baris-baris di bawah
+      dibaca di HP ini juga — tidak ada data toko yang dikirim, tidak ada yang diubah.</small>
+  </div>
+
+  <div class='card mb-3'>
+    <div class='card-body'>
+      <div id='baris' class='d-flex flex-column gap-2'>
+        <div class='text-muted small'>Memeriksa...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class='d-flex flex-wrap gap-2 mb-3'>
+    <button type='button' class='btn btn-primary' id='ulangi' style='background-color: var(--navy); min-height: 44px;'>
+      <i class='bi bi-arrow-repeat me-1'></i>Periksa ulang
+    </button>
+    <button type='button' class='btn btn-outline-danger' id='hapusSalinan' style='min-height: 44px;'>
+      <i class='bi bi-trash me-1'></i>Hapus salinan di HP ini
+    </button>
+  </div>
+
+  <div class='small text-muted' id='catatan'></div>
+  <div class='small text-muted' id='waktu'></div>
+
+  <div class='mt-3 small'>
+    <strong>Cara membacanya</strong>
+    <ul class='mb-0 ps-3'>
+      <li><em>File di server</em> yang merah berarti server benar-benar tidak punya file-nya — tidak ada gunanya
+          menghapus apa pun di HP, yang harus dibetulkan adalah server-nya.</li>
+      <li><em>File di server</em> hijau tapi <em>Pustaka</em> merah: yang diterima HP masih salinan lama. Pakai tombol
+          <em>Hapus salinan di HP ini</em>, lalu muat ulang halaman kasir dua kali.</li>
+      <li>Keduanya hijau tapi kamera tidak terbuka: itu soal izin kamera atau alamatnya bukan HTTPS — lihat baris
+          <em>Kamera</em>.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+const DATA = <%- DATA_PEMERIKSAAN %>;
+const wadah = document.getElementById('baris');
+const catatan = document.getElementById('catatan');
+const waktu = document.getElementById('waktu');
+
+const LEBAR = { ok: 'ok', waspada: 'waspada', buruk: 'buruk' };
+
+function baris(judul, status, keterangan, detail) {
+  const el = document.createElement('div');
+  el.className = 'd-flex align-items-start gap-2 pemeriksaan-' + status;
+  const ikon = status === 'ok' ? 'bi-check-circle-fill' : (status === 'waspada' ? 'bi-exclamation-triangle-fill' : 'bi-x-circle-fill');
+  const warna = status === 'ok' ? 'text-success' : (status === 'waspada' ? 'text-warning' : 'text-danger');
+  el.innerHTML = "<i class='bi " + ikon + " " + warna + " fs-5 flex-shrink-0'></i>"
+    + "<div class='flex-grow-1'><div class='fw-semibold'>" + judul + "</div>"
+    + "<div class='small'>" + keterangan + "</div>"
+    + (detail ? "<div class='small text-muted'>" + detail + "</div>" : '') + "</div>";
+  return el;
+}
+
+// Satu pemeriksaan = satu baris. Semua dibungkus try/catch karena browser lama tidak punya
+// beberapa API ini sama sekali, dan halaman ini justru sering dibuka di browser yang aneh.
+// Halaman pemeriksaan ini sengaja TIDAK ikut memuat pustaka pemindai, jadi baris pertama
+// memuatnya sungguhan lewat <script> — persis yang dilakukan halaman kasir. Kalau server
+// malah menyodorkan halaman login, script-nya "onload" tapi Html5Qrcode tidak muncul.
+async function muatPustaka() {
+  if (window.Html5Qrcode) return 'sudah terpasang';
+  const alamat = DATA.aset + (DATA.aset.indexOf('?') === -1 ? '?' : '&') + 'cek=' + Date.now();
+  await new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = alamat;
+    el.onload = resolve;
+    el.onerror = () => reject(new Error('browser menolak memuat ' + alamat));
+    document.head.appendChild(el);
+  });
+  return 'dimuat dari server';
+}
+
+async function periksaPustaka() {
+  const versi = 'Penanda versi URL: ' + DATA.versi;
+  let cara;
+  try {
+    cara = await muatPustaka();
+  } catch (err) {
+    return baris('Pustaka pemindai di halaman ini', LEBAR.buruk,
+      'File tidak bisa dipasang sebagai skrip di perangkat ini: ' + (err.message || err), versi);
+  }
+  const ada = !!(window.Html5Qrcode && window.Html5QrcodeSupportedFormats);
+  return baris('Pustaka pemindai di halaman ini', ada ? LEBAR.ok : LEBAR.buruk,
+    ada ? 'Ter-load (' + cara + '), tombol scan bisa dipakai.'
+        : 'Skripnya muat tapi Html5Qrcode tidak muncul — yang datang bukan JavaScript.', versi);
+}
+
+async function periksaAset(url) {
+  const alamat = url || DATA.aset;
+  try {
+    const mulai = Date.now();
+    const jawaban = await fetch(alamat + (alamat.indexOf('?') === -1 ? '?' : '&') + 'cek=' + mulai, { cache: 'no-store' });
+    const teks = await jawaban.text();
+    const byte = teks.length;
+    const sepertiJs = /^\s*(var|!|\/\*|window)/.test(teks) && teks.indexOf('<!DOCTYPE') === -1;
+    const halamanLogin = /Login - KASIR POS|name=['"]username['"]/.test(teks);
+    let status = LEBAR.buruk, ket;
+    if (jawaban.redirected || halamanLogin) {
+      ket = 'Yang datang malah halaman login (' + byte + ' byte). Server tidak punya file ini.'
+        + ' Di server: git checkout HEAD -- public/vendor/html5-qrcode';
+    } else if (!jawaban.ok) {
+      ket = 'Server menjawab ' + jawaban.status + ' — file tidak ada di server.';
+    } else if (!sepertiJs) {
+      ket = 'Isinya bukan JavaScript (' + byte + ' byte, ' + (jawaban.headers.get('content-type') || 'tanpa tipe') + ').';
+    } else if (DATA.ukuranSeharusnya && Math.abs(byte - DATA.ukuranSeharusnya) > 200) {
+      status = LEBAR.waspada;
+      ket = 'Ukurannya beda: ' + byte + ' byte di HP ini, ' + DATA.ukuranSeharusnya + ' byte di server — kemungkinan terpotong.';
+    } else {
+      status = LEBAR.ok;
+      ket = 'Ada dan utuh: ' + byte + ' byte, ' + (jawaban.headers.get('content-type') || 'tanpa tipe') + '.';
+    }
+    return baris('File pemindai di server', status, ket,
+      'URL ' + alamat + ' · HTTP ' + jawaban.status + (jawaban.redirected ? ' (diarahkan)' : '')
+      + ' · ' + (Date.now() - mulai) + ' ms');
+  } catch (err) {
+    return baris('File pemindai di server', LEBAR.buruk,
+      'Tidak bisa bertanya ke server: ' + (err && err.message ? err.message : err), 'URL ' + alamat);
+  }
+}
+
+async function periksaSalinan() {
+  if (typeof caches === 'undefined' || !caches.keys) {
+    return baris('Salinan di HP ini', LEBAR.waspada,
+      'Browser ini tidak memberi akses cache (biasanya karena alamatnya bukan HTTPS).',
+      'Alamat: ' + location.host);
+  }
+  try {
+    const nama = (await caches.keys()).filter((n) => n.indexOf('kasir-') === 0);
+    const polos = DATA.aset.split('?')[0];
+    const temuan = [];
+    for (const n of nama) {
+      const cache = await caches.open(n);
+      const simpanan = await cache.match(new Request(polos, { method: 'GET' }), { ignoreSearch: true });
+      if (!simpanan) continue;
+      const teks = await simpanan.clone().text();
+      const login = /Login - KASIR POS|name=['"]username['"]/.test(teks);
+      temuan.push(n + ': ' + (login ? 'HALAMAN LOGIN (' + teks.length + ' byte)'
+                                    : teks.length + ' byte, ' + (simpanan.headers.get('content-type') || 'tanpa tipe')));
+    }
+    const rusak = temuan.some((t) => t.indexOf('HALAMAN LOGIN') !== -1);
+    if (rusak) {
+      return baris('Salinan di HP ini', LEBAR.buruk,
+        'Cache HP menyimpan halaman login sebagai file pemindai. Tekan "Hapus salinan di HP ini" lalu muat ulang halaman kasir dua kali.',
+        temuan.join(' · '));
+    }
+    if (!temuan.length) {
+      return baris('Salinan di HP ini', LEBAR.waspada,
+        'Belum ada salinan file pemindai di HP ini — wajar untuk HP yang baru pertama kali dibuka.',
+        'Cache yang ada: ' + (nama.join(', ') || 'belum ada'));
+    }
+    return baris('Salinan di HP ini', LEBAR.ok, 'Salinan yang tersimpan berupa JavaScript, bukan halaman login.',
+      temuan.join(' · '));
+  } catch (err) {
+    return baris('Salinan di HP ini', LEBAR.waspada, 'Cache tidak bisa dibaca: ' + (err.message || err));
+  }
+}
+
+async function periksaKamera() {
+  const aman = !!window.isSecureContext;
+  const ada = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  let izin = 'tidak bisa ditanya';
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      const status = await navigator.permissions.query({ name: 'camera' });
+      izin = status.state;
+    }
+  } catch (err) { izin = 'tidak bisa ditanya di browser ini'; }
+  const boleh = aman && ada;
+  return baris('Kamera boleh dipakai halaman ini', boleh ? LEBAR.ok : LEBAR.buruk,
+    boleh ? 'Konteks aman dan perangkat kamera tersedia; izin sekarang "' + izin + '".'
+          : (!aman ? 'Alamatnya bukan HTTPS/localhost, jadi browser menutup kamera. Pakai alamat tunnel-nya, atau tombol "Potret".'
+                   : 'Browser ini tidak punya getUserMedia — pakai tombol "Potret".'),
+    'Alamat: ' + location.host + ' · aman: ' + aman + ' · perangkat kamera: ' + ada + ' · izin: ' + izin);
+}
+
+async function periksaPekerja() {
+  if (!('serviceWorker' in navigator)) return baris('Pekerja latar belakang', LEBAR.waspada, 'Browser ini tidak mendukungnya.');
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) return baris('Pekerja latar belakang', LEBAR.waspada,
+      'Belum terdaftar di HP ini — salinan offline belum aktif, tapi scan tetap jalan lewat server.');
+    // active bisa masih kosong saat pekerja baru saja dipasang, jadi jangan langsung dibaca.
+    const pekerja = reg.active || reg.waiting || reg.installing;
+    const mana = reg.active ? (reg.waiting ? 'aktif, ada yang menunggu dipakai' : 'aktif')
+        : (reg.installing ? 'sedang dipasang' : 'daftar tapi tanpa pekerja');
+    return baris('Pekerja latar belakang', reg.active ? LEBAR.ok : LEBAR.waspada,
+      'Status: ' + mana, 'Berkas: ' + (pekerja ? pekerja.scriptURL : 'belum ada'));
+  } catch (err) {
+    return baris('Pekerja latar belakang', LEBAR.waspada, 'Tidak bisa dibaca: ' + (err.message || err));
+  }
+}
+
+async function jalankan() {
+  wadah.innerHTML = '';
+  const tambah = async (fn) => { try { wadah.appendChild(await fn()); } catch (e) { wadah.appendChild(baris('Pemeriksaan gagal', LEBAR.buruk, String(e && e.message || e))); } };
+  await tambah(periksaPustaka);
+  await tambah(periksaAset);
+  await tambah(periksaSalinan);
+  await tambah(periksaKamera);
+  await tambah(periksaPekerja);
+  waktu.textContent = 'Diperiksa ' + new Date().toLocaleString('id-ID') + ' di ' + location.host + '.';
+}
+
+document.getElementById('ulangi').addEventListener('click', jalankan);
+document.getElementById('hapusSalinan').addEventListener('click', async () => {
+  catatan.textContent = 'Menghapus salinan...';
+  try {
+    const nama = (await caches.keys()).filter((n) => n.indexOf('kasir-') === 0);
+    await Promise.all(nama.map((n) => caches.delete(n)));
+    catatan.textContent = nama.length + ' salinan dihapus (' + nama.join(', ') + '). Salinan yang baru akan tersimpan '
+      + 'sendiri begitu halaman dipakai lagi, jadi yang penting isinya JavaScript yang utuh. '
+      + 'Muat ulang halaman kasir dua kali.';
+    jalankan();
+  } catch (err) {
+    catatan.textContent = 'Gagal menghapus: ' + (err.message || err);
+  }
+});
+
+jalankan();
+</script>
+<%- include('layout-footer') %>

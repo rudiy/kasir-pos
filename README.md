@@ -171,6 +171,10 @@ Akun lain — kasir, manager yang sudah ada — tidak pernah ikut berubah.
    logo/QRIS + CSV, menampilkan berkas cadangan otomatis yang bisa diunduh satu-satu, dan
    mencatat aksi penghapusan data terakhir. Penghapusan data besar berada di kartu **Zona
    Berbahaya** pada halaman **Pengaturan Toko**.
+11. **Cek Pemindai** (`/cek-pemindai`) tersedia untuk semua role lewat menu sidebar (di layar HP
+   lewat **Lainnya**). Buka di HP yang tombol scan-nya menolak: lima barisnya menunjukkan apakah
+   file pemindai benar-benar ada di server, apakah HP masih menyimpan salinan rusak, apakah
+   kamera boleh dipakai, dan apakah service worker-nya aktif. Tidak ada data toko yang dikirim.
 
 ## Pembayaran dan member
 - Metode pembayaran sengaja **statis dua pilihan**: Tunai dan QRIS. Daftarnya divalidasi lagi di
@@ -778,6 +782,7 @@ helper `getBranchScope` menentukan cabang mana yang dipakai suatu query.
 | `npm start` | jalankan biasa |
 | `npm run db:checkpoint` | dorong isi `kasir.db-wal` ke `kasir.db` (hanya perlu kalau mau menyalin DB dengan tangan) |
 | `npm run db:backup` | buat satu cadangan online sekarang juga, tanpa mematikan server |
+| `npm run cek-aset` | bandingkan berkas `public/vendor/**` yang seharusnya ada dengan yang ada di disk; keluaran terakhir berisi satu baris `git checkout` siap tempel untuk memulihkan |
 
 ## Cadangan database
 `scripts/backup-db.js` memakai API *online backup* SQLite, jadi cadangan tetap aman meski
@@ -1079,6 +1084,11 @@ kasir tetap bisa dipakai lewat alamat LAN, dengan struk QRIS dan harga yang ters
   permanen. Karena itu `staleWhileRevalidate` menolak menyimpan respons yang
   `redirected`, dan `STATIC_CACHE` dinaikkan ke `kasir-statis-v6` supaya HP yang terlanjur
   menyimpan salinan salah membersihkannya sendiri saat service worker aktif.
+- URL file pemindai membawa penanda versi (`/vendor/html5-qrcode/html5-qrcode.min.js?v=<mtime>`),
+  dihitung dari waktu berubah berkas di server (`capAset` di server.js). Ganti isi berkas = ganti
+  URL, jadi Cloudflare dan cache HP tidak bisa mempertahankan salinan lama sampai 4 jam. Supaya
+  pre-cache offline tetap kena, `sw.js` mencocokkan dan menyimpan dengan `ignoreSearch` pada URL
+  tanpa tanda tanya (`tanpaQuery`).
 - Yang **tidak** dijamin offline: membuat transaksi baru. Stok, harga, dan struk dihitung
   di server, jadi saat server tak terjangkau layar hanya menampilkan bacaan terakhir dan
   tidak bisa dipakai menjual. Antrean transaksi offline (outbox) adalah fitur terpisah.
@@ -1109,6 +1119,15 @@ kasir tetap bisa dipakai lewat alamat LAN, dengan struk QRIS dan harga yang ters
   (`html5-qrcode.min.js` 375.364 byte + `LICENSE`) kalau server bukan hasil `git clone`.
   Setelah file kembali, HP yang cache-nya sempat terisi halaman login ikut bersih sendiri
   karena `STATIC_CACHE` sudah `v6` — cukup muat ulang halaman dua kali.
+- Cara cepat membedakan "server-nya yang bolong" dari "HP-nya yang masih menyimpan salinan
+  salah": buka menu **Cek Pemindai** (`/cek-pemindai`, semua role boleh masuk). Lima barisnya
+  dibaca di HP yang sedang bermasalah — pustaka, file di server, salinan di HP, izin kamera,
+  dan service worker — tanpa mengirim data toko. Tombol **Hapus salinan di HP ini** membuang
+  cache berawalan `kasir-`; yang baru akan tersimpan sendiri saat halaman dipakai lagi.
+- Server juga memeriksa dirinya sendiri saat nyala: kalau `html5-qrcode.min.js` tidak ada di
+  disk, log menampilkan `[pemindai] MATI: ...` beserta perintah `git checkout` pemulihnya;
+  kalau isinya terpotong (`< 100.000` byte) muncul peringatan bahwa HP akan menolak memuatnya.
+  Server yang sehat tidak mencetak apa pun soal ini.
 
 ## Catatan keamanan
 - `.env` tidak dilacak git. Nilai `SESSION_SECRET` lama masih ada di history commit

@@ -77,14 +77,19 @@ async function networkFirst(request, cacheName) {
 
 // Aset statis: sajikan dari cache supaya cepat dan tetap ada saat offline,
 // lalu diam-diam ambil versi terbaru untuk permintaan berikutnya.
+// Kunci cache = URL tanpa tanda tanya. Halaman meminta aset pemindai dengan ?v=<penanda>,
+// dan daftar SHELL di atas menyimpan URL polosnya; tanpa penyamaan ini, salinan hasil
+// pre-cache tidak akan pernah ketemu dan pemindai mati saat internet putus.
+const tanpaQuery = (u) => u.split('?')[0];
 async function staleWhileRevalidate(request) {
     const cache = await caches.open(STATIC_CACHE);
-    const saved = await cache.match(request);
+    const kunci = new Request(tanpaQuery(request.url), { method: 'GET' });
+    const saved = await cache.match(kunci, { ignoreSearch: true });
     const refresh = fetch(request).then((fresh) => {
         // Respons yang kena redirect berarti server tidak punya aset itu: aset pemindai yang
         // hilang dilayani sebagai halaman login (200 text/html). Kalau ikut disimpan, HP akan
         // selamanya memuat halaman login sebagai JavaScript dan tombol scan mati terus.
-        if (fresh && fresh.ok && !fresh.redirected) cache.put(request, fresh.clone());
+        if (fresh && fresh.ok && !fresh.redirected) cache.put(kunci, fresh.clone());
         return fresh;
     }).catch(() => null);
     return saved || await refresh || new Response('aset tidak tersedia', { status: 504 });
