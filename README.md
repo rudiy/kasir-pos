@@ -217,6 +217,26 @@ halaman terpisah. Satu tombol, dua jalur, karena keduanya pasti dipakai di toko:
   ditolak atau kamera tidak ada, layar pemindai otomatis pindah ke mode ini dengan pesan
   "Kamera halaman tidak bisa dibuka (izin ditolak). Pakai mode foto sebagai gantinya."
 
+**Tombolnya sendiri memberi tahu mode mana yang aktif** (`tandaModeScan()`), supaya bedanya tidak
+perlu diketuk dulu untuk diketahui:
+
+- Titik kecil di sudut kanan-atas ikon kamera — **hijau** = scan terus-menerus, **kuning** = potret
+  per item. Warnanya titik, bukan tulisan, karena label tombolnya disembunyikan Bootstrap di bawah
+  576px, padahal justru di HP alamat LAN itu membuka potret.
+- Label `Scan terus` / `Potret` pada layar ≥ 576px, dan kalimat yang sama di `title` + `aria-label`.
+- Di layar pemindai mode foto, satu baris kuning di bawah tombol "Potret ulang" menyebut alamat yang
+  sedang dipakai (`location.origin`): *"Scan tanpa potret butuh https:// - perangkat ini membuka
+  http://192.168.x.x:3000"*. Baris ini hanya muncul kalau yang menolak memang alamatnya — kalau
+  halaman sudah https tetapi kameranya yang gagal, barisnya tetap kosong supaya tidak menyalahkan
+  hal yang benar.
+
+Jadi untuk pemakaian harian di HP: **buka kasir dari alamat tunnel (`https://…`), bukan dari
+`http://192.168.x.x:3000`** — tidak ada yang perlu diubah di aplikasi, viewfinder langsung aktif dan
+barcode masuk keranjang tanpa ketuk. Uji cepat dari satu mesin: `cloudflared tunnel --url
+http://localhost:3000` (alamatnya acak, hanya untuk coba). Untuk alamat tetap, lihat bagian
+*Tunneling lewat Cloudflare* di bawah. Mode foto tetap tinggal sebagai cadangan: internet toko mati,
+HP lain yang belum diarahkan ke https, atau kamera yang izinnya dicabut.
+
 Pustaka: `html5-qrcode@2.3.8` (375 KB, Apache-2.0) diambil ke `public/vendor/html5-qrcode/` —
 bukan CDN, tidak ada dependensi npm baru, jadi `git pull` + `npm run dev` di mesin kasir tetap
 cukup dan pemindai tetap jalan saat internet mati. Berkasnya ikut didaftarkan di `SHELL`

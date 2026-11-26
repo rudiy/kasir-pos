@@ -22,9 +22,12 @@
       <span class='input-group-text bg-white' aria-hidden='true'><i class='bi bi-search'></i></span>
       <input type='text' id='barcode-input' class='form-control shadow-sm'
              placeholder='Scan Barcode atau Cari Produk (F2)...' autocomplete='off' autocapitalize='off' spellcheck='false'>
+      <% /* Titik mode (hijau/kuning) dan labelnya diisi JavaScript lewat tandaModeScan(): di alamat
+             http://192.168.x.x tombol ini membuka potret per item, bukan scan terus-menerus, dan
+             bedanya baru kelihatan setelah diketuk kalau tidak diberi tanda. */ %>
       <button type='button' id='btnScan' class='btn btn-primary shadow-sm' onclick='bukaPemindai()'
               title='Pindai barcode dengan kamera' aria-label='Pindai barcode dengan kamera' aria-haspopup='dialog'>
-        <i class='bi bi-camera-fill'></i><span class='d-none d-sm-inline ms-1'>Scan</span>
+        <i class='bi bi-camera-fill'></i><span class='mode-dot' id='scanModeDot' aria-hidden='true'></span><span class='d-none d-sm-inline ms-1' id='scanModeLabel'>Scan</span>
       </button>
     </div>
     <% /* Katalog digeser mendatar per halaman sampai 991,98px (lihat .produk-slider di style.css),
@@ -161,6 +164,7 @@
   <div class='scan-bawah'>
     <button type='button' class='btn btn-outline-light' id='btnScanFoto' onclick='mulaiModeFoto()'><i class='bi bi-camera me-1'></i>Ambil foto barcode</button>
     <div class='scan-kecil' id='scanPetunjuk'>Scan terus-menerus: tiap barcode yang terbaca langsung masuk keranjang.</div>
+    <div class='scan-kecil scan-alternatif' id='scanAlternatif' aria-live='polite'></div>
   </div>
 </div>
 <input type='file' accept='image/*' capture='environment' id='scanFoto' class='d-none' aria-hidden='true' tabindex='-1'>
@@ -611,6 +615,7 @@ const scanJudul = document.getElementById('scanJudul');
 const scanStatus = document.getElementById('scanStatus');
 const scanPetunjuk = document.getElementById('scanPetunjuk');
 const btnScanFoto = document.getElementById('btnScanFoto');
+const scanAlternatif = document.getElementById('scanAlternatif');
 const scanFoto = document.getElementById('scanFoto');
 
 let pemindai = null;
@@ -644,6 +649,28 @@ function tampilkanOverlay(modeFoto) {
   scanPetunjuk.textContent = modeFoto
     ? 'Kamera HP dibuka untuk tiap potret. Kalau barcode sulit fokus, gunakan scanner USB.'
     : 'Scan terus-menerus: tiap barcode yang terbaca langsung masuk keranjang.';
+  tandaModeScan(!!modeFoto);
+}
+
+// Mode mana yang sedang ditawarkan tombol Scan ditulis pada tombolnya, bukan hanya dialami
+// setelah ia diketuk: hijau "Scan terus" = tiap barcode yang terbaca langsung masuk keranjang,
+// kuning "Potret" = kamera HP dibuka dan harus memotret sekali untuk tiap item.
+function tandaModeScan(modeFoto) {
+  const terus = !modeFoto && bisaViewfinder();
+  const tombol = document.getElementById('btnScan');
+  tombol.classList.toggle('scan-terus', terus);
+  document.getElementById('scanModeLabel').textContent = terus ? 'Scan terus' : 'Potret';
+  tombol.title = terus
+    ? 'Scan terus-menerus: tiap barcode yang terbaca langsung masuk keranjang.'
+    : 'Potret untuk tiap barcode. Scan tanpa potret butuh alamat https://.';
+  tombol.setAttribute('aria-label', terus ? 'Pindai barcode terus-menerus dengan kamera'
+    : 'Potret barcode dengan kamera, satu foto untuk tiap item');
+  // Baris kuning ini hanya berbicara kalau yang menolak memang alamatnya (konteks non-https).
+  // Bila halaman sudah https tapi kameranya yang gagal, alamatnya bukan masalah dan kalimat itu
+  // justru menyuruh kasir mencari jalan lain.
+  scanAlternatif.textContent = (modeFoto && !window.isSecureContext)
+    ? 'Scan tanpa potret butuh https:// - perangkat ini membuka ' + location.origin
+    : '';
 }
 
 function bipScan() {
@@ -772,6 +799,9 @@ function tutupPemindai() {
 }
 
 scanFoto.addEventListener('change', padaFotoSelesai);
+// Penanda tombol dipasang sejak halaman tiba: mode sudah bisa dibaca dari alamatnya, jadi kasir
+// tidak perlu mengetuk Scan dulu untuk tahu perangkatnya scan terus atau potret.
+tandaModeScan(false);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !scanOverlay.classList.contains('is-hidden')) { e.stopPropagation(); tutupPemindai(); }
 });

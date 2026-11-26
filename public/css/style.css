@@ -75,6 +75,23 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
 .scan-overlay.scan-mode-foto .scan-video { display: none; }
 .scan-overlay.scan-mode-foto .scan-bawah { flex: 1 1 auto; justify-content: center; }
 .scan-overlay.scan-mode-foto .scan-kecil { font-size: .98rem; color: #CBD5E1; max-width: 26ch; }
+/* Penanda mode pada tombol Scan, dipakai sebagai titik dan bukan teks: label tombolnya sendiri
+   disembunyikan Bootstrap di bawah 576px, padahal justru di HP halaman http://192.168.x.x membuka
+   potret per item. Tanpa titik, kasir baru tahu mode mana yang aktif setelah mengetuk.
+   Hijau = barcode langsung masuk keranjang; kuning = harus memotret tiap item (juga keadaan
+   awal bila JavaScript belum jalan, jadi warna ini tidak pernah menjanjikan lebih dari kenyataannya). */
+#btnScan { position: relative; }
+#btnScan .mode-dot {
+  position: absolute; top: 5px; right: 5px; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--gold); box-shadow: 0 0 0 2px rgba(255, 255, 255, .65);
+}
+#btnScan.scan-terus .mode-dot { background: var(--green); }
+/* Baris kuning di bawah tombol "Potret ulang": satu-satunya tempat yang memberi tahu kasir
+   bahwa mode potret bukan pilihan aplikasi, dan bagaimana cara mendapat scan terus-menerus.
+   Disembunyikan lewat CSS (bukan JS) supaya viewfinder tidak pernah menampilkan dua petunjuk yang
+   bertentangan saat overlay dibuka. */
+.scan-alternatif { display: none; }
+.scan-overlay.scan-mode-foto .scan-alternatif { display: block; color: #FCD34D; }
 @media print { .scan-overlay { display: none !important; } }
 
 /* ==================== RESPONSIVE (HP / TABLET / PC) ==================== */
