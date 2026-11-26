@@ -1,5 +1,6 @@
 .env
 update-fitur-3.js
+node_modules/
 
 # Database dev SQLite sengaja tidak ikut versi git: isinya berubah tiap transaksi
 # dan bukan sumber skema. server.js memanggil initDB() saat start, jadi clone baru
