@@ -251,15 +251,43 @@ terbaca di sana yang diterjemahkan `sebabKamera()`:
 | `NotReadableError` / `TrackStartError` / "in use" | Kamera dipegang tab atau aplikasi lain — tutup lalu ketuk **Coba lagi** |
 | `NotFoundError` | Perangkat tidak punya kamera yang bisa dipakai halaman |
 | `OverconstrainedError` | Kamera belakang tidak tersedia |
-| sisanya | Nama + pesan error ditampilkan apa adanya (plus 70 karakter error pustaka bila kegagalan terjadi di dalam pustaka) |
+| sisanya | Nama + pesan error ditampilkan apa adanya |
 
 Tombol **Coba lagi** hanya muncul sesudah kamera benar-benar gagal (`.scan-gagal` dipasang
 `turunKeModeFoto()`), supaya selama viewfinder jalan tidak ada tombol yang mengundang kasir
 memulai ulang kamera yang sedang dipakai. Mode foto tetap dibuka di belakang penjelasannya —
-antrean tidak boleh macet gara-gara satu izin. Catatan penting waktu menelusuri penyebab:
+antrean tidak boleh macet gara-gara satu izin.
+
+**Sebab yang benar-benar terjadi di HP toko** (2026-11-26, lewat screenshot layar ini):
+`'facingMode' should be string or object with exact as key` — kamera dan izinnya sehat, yang salah
+adalah bentuk argumen yang kita kirim ke pustaka. `createVideoConstraints()` di dalam
+`html5-qrcode.min.js` menuntut **tepat satu kunci** dan `facingMode` hanya boleh string
+`"user"`/`"environment"` atau `{exact: ...}`; `{facingMode: {ideal: 'environment'}}` yang dulu dipakai
+ditolak sebelum browser sempat menyentuh kamera sama sekali. Yang dipakai sekarang:
+`start({ facingMode: 'environment' }, ...)`. String polos dipilih justru karena paling longgar —
+browser memakainya sebagai *ideal*, jadi perangkat tanpa kamera belakang (webcam laptop di kasir)
+tetap dapat kamera, sedangkan `{exact: 'environment'}` akan gagal `OverconstrainedError`.
+`cekKamera()` sengaja tetap memakai `{video: {facingMode: {ideal: ...}}}` karena itu panggilan
+`getUserMedia` sungguhan, bukan lewat pustaka, dan di sana `ideal` memang sah. Gerbang
+`cek-sintaks.js` menjaga keduanya tidak tertukar lagi. Catatan penting waktu menelusuri penyebab:
 `helmet@7.2.0` **tidak** mengirim header `Permissions-Policy` (header itu baru jadi default di
 helmet 8), jadi `camera=()` bukan penyebab kegagalan di stack ini — sudah diverifikasi dengan
 menjalankan middlewarnya dan mencetak header yang dihasilkan.
+
+Kalau layar yang muncul memang **"Izin kamera belum diberikan"**, langkah persisnya di Chrome
+Android (bukan di aplikasinya):
+
+1. Ketuk **ikon gembok** di bilah alamat (sebelah kiri `kasir.harapanrudijaya.my.id`) — bukan menu ⋮.
+2. Di panel yang terbuka, kamera biasanya tertulis *Diblokir* atau *Tanyakan lagi*. Ketuk **Izinkan**
+   untuk kamera; kalau panelnya tipis, ketuk **Pengaturan situs**/kelola izin di panel itu dulu.
+3. Kembali ke halaman, ketuk **Coba lagi**. Kalau tidak berubah, muat ulang (⋮ > Muat ulang) — izin
+   baru berlaku untuk pemuatan berikutnya.
+4. Kalau ikon gembok tidak menawarkan apa pun, izinnya dikunci di level sistem: **Setelan HP > Aplikasi
+   > Chrome > Izin > Kamera > Izinkan**. Selama di sini masih "Jangan izinkan", Chrome tidak pernah
+   menampilkan permintaan izin sama sekali dan `getUserMedia` langsung balik `NotAllowedError`.
+5. Alternatif lewat daftar situs: ⋮ > **Setelan > Setelan situs > Kamera**, cari host-nya di daftar
+   *Diblokir* > ubah ke *Izinkan*. Untuk membersihkan semua ingatan izin: **Setelan situs > Setel
+   ulang izin situs ke default**.
 
 Pustaka: `html5-qrcode@2.3.8` (375 KB, Apache-2.0) diambil ke `public/vendor/html5-qrcode/` —
 bukan CDN, tidak ada dependensi npm baru, jadi `git pull` + `npm run dev` di mesin kasir tetap

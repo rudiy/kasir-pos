@@ -734,7 +734,13 @@ async function mulaiViewfinder() {
   const cek = await cekKamera();
   if (!cek.ok) { turunKeModeFoto(sebabKamera(cek.err)); return; }
   try {
-    await wadahPemindai().start({ facingMode: { ideal: 'environment' } },
+    // Bentuknya bukan MediaTrackConstraints biasa: createVideoConstraints() di dalam bundel
+    // menolak objek dengan lebih dari satu kunci dan hanya menerima facingMode sebagai string
+    // "user"/"environment" atau {exact: ...} — {ideal: ...} dilempar sebagai
+    // "'facingMode' should be string or object with exact as key". String polos juga yang paling
+    // longgar: browser memakainya sebagai ideal, jadi perangkat tanpa kamera belakang (webcam
+    // laptop di kasir) tetap dapat kamera, bukan OverconstrainedError seperti kalau pakai exact.
+    await wadahPemindai().start({ facingMode: 'environment' },
       {
         fps: 10,
         // Bingkai melebar, bukan kotak: barcode satu dimensi butuh lebar garis, dan HP dipegang tegak.
@@ -750,8 +756,9 @@ async function mulaiViewfinder() {
   } catch (err) {
     await hentikanViewfinder();
     // Kamera sudah terbukti bisa diminta di atas, jadi kegagalan di sini milik pustaka atau
-    // elemen videonya — error aslinya ikut ditampilkan supaya tidak menebak lagi.
-    turunKeModeFoto(sebabKamera(err) + ' Rincian: ' + String((err && (err.name || err.message)) || err).slice(0, 70));
+    // elemen videonya. sebabKamera() sudah menampilkan nama + pesan aslinya di cabang terakhir,
+    // jadi tidak perlu diulang lagi di belakangnya.
+    turunKeModeFoto(sebabKamera(err));
   }
 }
 
