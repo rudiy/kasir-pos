@@ -70,6 +70,12 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
 .scan-status.gagal { color: #FCA5A5; }
 .scan-bawah { display: flex; flex-direction: column; align-items: center; gap: .45rem; padding: .55rem .85rem calc(.9rem + env(safe-area-inset-bottom)); }
 .scan-kecil { font-size: .78rem; color: #94A3B8; text-align: center; max-width: 40ch; }
+/* Dua tombol aksi berdampingan; "Coba lagi" hanya muncul sesudah kamera benar-benar gagal
+   (scan-gagal dipasang turunKeModeFoto), karena selama viewfinder jalan tombol itu cuma
+   mengundang kasir memulai ulang kamera yang sedang dipakai. */
+.scan-aksi { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; }
+.btn-coba { display: none; }
+.scan-overlay.scan-gagal .btn-coba { display: inline-block; }
 /* Mode foto: tidak ada stream yang ditampilkan, jadi area kamera ditutup dan petunjuknya yang
    mengambil ruang itu. */
 .scan-overlay.scan-mode-foto .scan-video { display: none; }

@@ -213,9 +213,9 @@ halaman terpisah. Satu tombol, dua jalur, karena keduanya pasti dipakai di toko:
   lewat alamat LAN. Itu aturan browser, bukan bug aplikasi.
 - **Mode foto** — tombol yang sama membuka kamera bawaan HP lewat
   `<input type="file" accept="image/*" capture="environment">`, fotonya dibaca dari berkas.
-  Bukan `getUserMedia`, jadi jalan di konteks apa pun, termasuk alamat LAN. Kalau viewfinder
-  ditolak atau kamera tidak ada, layar pemindai otomatis pindah ke mode ini dengan pesan
-  "Kamera halaman tidak bisa dibuka (izin ditolak). Pakai mode foto sebagai gantinya."
+  Bukan `getUserMedia`, jadi jalan di konteks apa pun, termasuk alamat LAN. Kalau viewfinder ditolak
+  atau kamera tidak ada, layar pemindai pindah ke mode ini dengan penyebabnya apa adanya (lihat
+  tabel di bawah) — mode foto tidak pernah lagi jadi satu-satunya petunjuk.
 
 **Tombolnya sendiri memberi tahu mode mana yang aktif** (`tandaModeScan()`), supaya bedanya tidak
 perlu diketuk dulu untuk diketahui:
@@ -236,6 +236,30 @@ barcode masuk keranjang tanpa ketuk. Uji cepat dari satu mesin: `cloudflared tun
 http://localhost:3000` (alamatnya acak, hanya untuk coba). Untuk alamat tetap, lihat bagian
 *Tunneling lewat Cloudflare* di bawah. Mode foto tetap tinggal sebagai cadangan: internet toko mati,
 HP lain yang belum diarahkan ke https, atau kamera yang izinnya dicabut.
+
+**Kalau halaman sudah https tapi kamera tetap tidak mau menyala**, layar pemindai sekarang menyebut
+penyebabnya dan satu langkah yang bisa dikerjakan, bukan lagi "Kamera halaman tidak bisa dibuka.
+Pakai mode foto sebagai gantinya." Yang lama itu menyembunyikan sebabnya karena `html5-qrcode`
+menolak dengan string generik (`Camera failed to start`) sambil membuang nama error aslinya, jadi
+`cekKamera()` meminta kamera sekali sendiri lewat `navigator.mediaDevices.getUserMedia` (streamnya
+langsung dilepas, +250ms supaya Chrome Android melepas kameranya rapi-rapi) dan nama error yang
+terbaca di sana yang diterjemahkan `sebabKamera()`:
+
+| Error | Yang muncul di layar |
+|---|---|
+| `NotAllowedError` / "permission denied" | Izin kamera belum diberikan untuk `<host>` — ketuk ikon gembok di bilah alamat Chrome > Izinkan > muat ulang |
+| `NotReadableError` / `TrackStartError` / "in use" | Kamera dipegang tab atau aplikasi lain — tutup lalu ketuk **Coba lagi** |
+| `NotFoundError` | Perangkat tidak punya kamera yang bisa dipakai halaman |
+| `OverconstrainedError` | Kamera belakang tidak tersedia |
+| sisanya | Nama + pesan error ditampilkan apa adanya (plus 70 karakter error pustaka bila kegagalan terjadi di dalam pustaka) |
+
+Tombol **Coba lagi** hanya muncul sesudah kamera benar-benar gagal (`.scan-gagal` dipasang
+`turunKeModeFoto()`), supaya selama viewfinder jalan tidak ada tombol yang mengundang kasir
+memulai ulang kamera yang sedang dipakai. Mode foto tetap dibuka di belakang penjelasannya —
+antrean tidak boleh macet gara-gara satu izin. Catatan penting waktu menelusuri penyebab:
+`helmet@7.2.0` **tidak** mengirim header `Permissions-Policy` (header itu baru jadi default di
+helmet 8), jadi `camera=()` bukan penyebab kegagalan di stack ini — sudah diverifikasi dengan
+menjalankan middlewarnya dan mencetak header yang dihasilkan.
 
 Pustaka: `html5-qrcode@2.3.8` (375 KB, Apache-2.0) diambil ke `public/vendor/html5-qrcode/` —
 bukan CDN, tidak ada dependensi npm baru, jadi `git pull` + `npm run dev` di mesin kasir tetap

@@ -162,7 +162,10 @@
   <div class='scan-video' id='scan-video'></div>
   <div class='scan-status' id='scanStatus' aria-live='polite'></div>
   <div class='scan-bawah'>
-    <button type='button' class='btn btn-outline-light' id='btnScanFoto' onclick='mulaiModeFoto()'><i class='bi bi-camera me-1'></i>Ambil foto barcode</button>
+    <div class='scan-aksi'>
+      <button type='button' class='btn btn-outline-light btn-coba' id='btnCobaLagi' onclick='mulaiViewfinder()'><i class='bi bi-arrow-clockwise me-1'></i>Coba lagi</button>
+      <button type='button' class='btn btn-outline-light' id='btnScanFoto' onclick='mulaiModeFoto()'><i class='bi bi-camera me-1'></i>Ambil foto barcode</button>
+    </div>
     <div class='scan-kecil' id='scanPetunjuk'>Scan terus-menerus: tiap barcode yang terbaca langsung masuk keranjang.</div>
     <div class='scan-kecil scan-alternatif' id='scanAlternatif' aria-live='polite'></div>
   </div>
@@ -641,7 +644,7 @@ function statusScan(teks, jenis) {
 
 function tampilkanOverlay(modeFoto) {
   scanOverlay.classList.toggle('scan-mode-foto', !!modeFoto);
-  scanOverlay.classList.remove('is-hidden');
+  scanOverlay.classList.remove('scan-gagal', 'is-hidden');
   btnScanFoto.innerHTML = modeFoto ? '<i class="bi bi-camera"></i> Potret ulang'
     : '<i class="bi bi-camera"></i> Scan dari foto';
   scanJudul.textContent = modeFoto ? 'Potret barcode: seluruh garis + tepi putih masuk bingkai'
@@ -725,6 +728,11 @@ async function hentikanViewfinder() {
 async function mulaiViewfinder() {
   tampilkanOverlay(false);
   statusScan('Menyiapkan kamera...');
+  // Ditanya sendiri sebelum pustaka dipakai: html5-qrcode menolak dengan string generik
+  // ("Camera failed to start") dan membuang nama error aslinya, jadi tanpa pertanyaan langsung
+  // ini layar hanya bilang "tidak bisa dibuka" tanpa pernah tahu kenapa.
+  const cek = await cekKamera();
+  if (!cek.ok) { turunKeModeFoto(sebabKamera(cek.err)); return; }
   try {
     await wadahPemindai().start({ facingMode: { ideal: 'environment' } },
       {
@@ -740,19 +748,52 @@ async function mulaiViewfinder() {
     pemindaiJalan = true;
     statusScan('');
   } catch (err) {
-    // Kamera ditolak, tidak ada, atau tidak bisa dibuka: mode foto tetap tersedia, jadi
-    // tombol scan tidak berakhir sebagai layar hitam.
     await hentikanViewfinder();
-    kodeTerakhir = '';
-    statusScan('');
-    tampilkanOverlay(true);
-    // html5-qrcode menolak dengan objek Error di satu jalur dan string polos di jalur lain,
-    // jadi izin yang ditolak dikenali dari teks pesannya, bukan dari satu properti.
-    const ditolak = /NotAllowedError|Permission|denied|not allowed/i.test(String((err && err.name) || '') + ' ' + String((err && err.message) || err));
-    statusScan('Kamera halaman tidak bisa dibuka'
-      + (ditolak ? ' (izin ditolak)' : '')
-      + '. Pakai mode foto sebagai gantinya.', 'gagal');
+    // Kamera sudah terbukti bisa diminta di atas, jadi kegagalan di sini milik pustaka atau
+    // elemen videonya — error aslinya ikut ditampilkan supaya tidak menebak lagi.
+    turunKeModeFoto(sebabKamera(err) + ' Rincian: ' + String((err && (err.name || err.message)) || err).slice(0, 70));
   }
+}
+
+// Sekali pakai untuk mendiagnosis, lalu stream-nya dilepas; viewfinder yang sungguhan dibuka
+// oleh pustaka setelahnya. Jeda pendek melepas kamera dengan rapi, karena Chrome Android bisa
+// membalas TrackStartError bila stream lama diminta lagi di tick yang sama.
+async function cekKamera() {
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+    return { ok: false, err: { name: 'NotFoundError', message: 'navigator.mediaDevices tidak ada' } };
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    stream.getTracks().forEach(t => t.stop());
+    await new Promise(r => setTimeout(r, 250));
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, err: err };
+  }
+}
+
+// Nama error diterjemahkan jadi satu langkah yang bisa dikerjakan kasir di HP-nya.
+function sebabKamera(err) {
+  const teks = String((err && err.name) || '') + ' ' + String((err && err.message) || err || '');
+  if (/NotAllowedError|Permission|denied|not allowed|permission policy/i.test(teks)) {
+    return 'Izin kamera belum diberikan untuk ' + location.host + '. Ketuk ikon gembok di bilah alamat Chrome, pilih Izinkan, lalu muat ulang halaman.';
+  }
+  if (/NotReadableError|TrackStart|AbortError|in use|busy/i.test(teks)) {
+    return 'Kamera sedang dipegang tab atau aplikasi lain. Tutup itu, lalu ketuk "Coba lagi".';
+  }
+  if (/NotFoundError|DevicesNotFound/i.test(teks)) return 'Perangkat ini tidak punya kamera yang bisa dipakai halaman.';
+  if (/OverconstrainedError|ConstraintNotSatisfied/i.test(teks)) return 'Kamera belakang tidak tersedia di perangkat ini.';
+  if (/SecurityError/i.test(teks)) return 'Browser menolak kamera di halaman ini (' + location.origin + ').';
+  return 'Kamera halaman tidak bisa dibuka (' + (teks.trim() || 'tanpa nama error') + ').';
+}
+
+// Mode foto tetap dibuka di belakang penjelasannya: antrean di kasir tidak boleh macet hanya
+// karena satu izin kamera, padahal potret selalu bisa dipakai.
+function turunKeModeFoto(pesan) {
+  kodeTerakhir = '';
+  tampilkanOverlay(true);
+  scanOverlay.classList.add('scan-gagal');
+  statusScan(pesan + ' Potret tetap bisa dipakai.', 'gagal');
 }
 
 // Titik masuk tombol "Scan". Viewfinder hanya ditawarkan di konteks aman (https:// tunnel atau
