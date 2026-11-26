@@ -289,6 +289,12 @@ body { background-color: #F8FAFC; font-family: 'Segoe UI', Tahoma, Geneva, Verda
   .kasir-cari .btn { min-height: 48px; padding-left: .9rem; padding-right: .9rem; }
 }
 
+/* Kabar untuk scanner Bluetooth/USB yang ketikannya mendarat di luar kolom cari. Tempatnya
+   dicadangkan sejak awal (min-height) supaya daftar produk tidak melompat tiap barcode masuk. */
+.scanner-pesan { min-height: 1.35rem; margin-bottom: .35rem; color: #475569; }
+.scanner-pesan.jadi { color: #15803D; font-weight: 600; }
+.scanner-pesan.gagal { color: #B4232C; font-weight: 600; }
+
 /* Tablet: laci sudah jadi sidebar tetap, tapi sentuhan masih diperbesar. */
 @media (min-width: 768px) and (max-width: 1199.98px) {
   :root { --sidebar-w: 220px; }

@@ -30,6 +30,9 @@
         <i class='bi bi-camera-fill'></i><span class='mode-dot' id='scanModeDot' aria-hidden='true'></span><span class='d-none d-sm-inline ms-1' id='scanModeLabel'>Scan</span>
       </button>
     </div>
+    <% /* Satu baris kabar untuk scanner Bluetooth/USB: ketikannya tidak selalu mendarat di kolom
+           cari, dan tanpa baris ini scan yang gagal hanya berbunyi tanpa sebab yang terbaca. */ %>
+    <div class='small scanner-pesan' id='scannerPesan' role='status' aria-live='polite'></div>
     <% /* Katalog digeser mendatar per halaman sampai 991,98px (lihat .produk-slider di style.css),
            jadi produk dipecah rata 12 kartu per slide sejak render: tanpa JavaScript pun susunannya
            sudah benar, dan di layar >= 992px slide-nya hanya menumpuk seperti grid biasa. */ %>
@@ -568,7 +571,86 @@ barcodeInput.addEventListener('input', (e) => filterProductGrid(e.target.value.t
 barcodeInput.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
   e.preventDefault();
-  prosesKode(barcodeInput.value, false);
+  const term = barcodeInput.value.trim();
+  // Rangkaian tanpa spasi, minimal 6 karakter, dan ada angkanya = scanner, bukan orang yang
+  // mencari "kopi". Kabarnya lewat baris pesan + bunyi, bukan dialog yang menahan layar.
+  if (/^(?=.*\d)[\w-]{6,}$/.test(term)) { barcodeInput.value = ''; terimaScanScanner(term); return; }
+  prosesKode(term, false);
+});
+
+// ---------- Scanner Bluetooth/USB yang menyamar jadi keyboard ----------
+// Scanner tidak tahu kolom mana yang sedang aktif: ia hanya mengetik. Sebelumnya ketikan itu
+// hilang tanpa suara kalau kasir belum mengetuk kolom cari (di HP kolomnya memang tidak
+// auto-focus), jadi rangkaian karakter yang datang secepat itu ditangkap di mana saja.
+// Pembedanya kecepatan: pemindai mengirim 13 digit dalam hitungan milidetik per karakter,
+// manusia mengetik di bawah 10 karakter per detik (100 ms+ per karakter).
+const JEDA_KARAKTER_SCAN_MAKS = 80;
+const PANJANG_MIN_SCAN = 6;
+// Satu tarikan yang tidak sengaja terkirim dua kali (sebagian scanner BLE mengirim ulangan
+// ±100 ms kemudian). Dua scan sengaja dari barang yang sama selalu lebih jauh dari ini.
+const JEDA_SCAN_ULANG = 250;
+let tetesScanner = '';
+let waktuKarakterScanner = 0;
+let kodeScanner = '';
+let waktuScanner = 0;
+let hapusPesanScanner = null;
+
+function pesanScanner(teks, jenis) {
+  const el = document.getElementById('scannerPesan');
+  if (!el) return;
+  el.textContent = teks || '';
+  el.className = 'small scanner-pesan' + (jenis ? ' ' + jenis : '');
+  clearTimeout(hapusPesanScanner);
+  if (teks) hapusPesanScanner = setTimeout(() => {
+    el.textContent = '';
+    el.className = 'small scanner-pesan';
+  }, 2500);
+}
+
+// Hasil scanner masuk lewat prosesKode() yang sama dengan kamera dan Enter manual, jadi
+// aturannya satu: tiap scan = +1 qty, barang yang sama boleh discan berulang.
+function terimaScanScanner(kode) {
+  const bersih = String(kode || '').trim();
+  if (!bersih) return;
+  const sekarang = Date.now();
+  if (bersih === kodeScanner && sekarang - waktuScanner < JEDA_SCAN_ULANG) { waktuScanner = sekarang; return; }
+  kodeScanner = bersih;
+  waktuScanner = sekarang;
+  const hasil = prosesKode(bersih, true);
+  if (hasil.status === 'stok-habis') { bipTolak(); pesanScanner('Stok ' + hasil.produk.name + ' tinggal ' + hasil.stok + '.', 'gagal'); return; }
+  if (hasil.status === 'tidak-ada') { bipTolak(); pesanScanner('Barcode ' + bersih + ' tidak ada di produk cabang ini.', 'gagal'); return; }
+  if (hasil.status === 'banyak') { bipTolak(); pesanScanner('"' + bersih + '" cocok dengan ' + hasil.jumlah + ' produk - ketuk kartunya.', 'gagal'); return; }
+  if (hasil.status === 'kosong') return;
+  bipScan();
+  pesanScanner('+ ' + hasil.qty + '  ' + hasil.produk.name + '   Rp ' + formatter.format(hasil.produk.price_sell * hasil.qty), 'jadi');
+}
+
+function scannerSedangDipakai() {
+  // Layar pemindai kamera atau modal pembayaran sedang di depan: angka yang datang di sana
+  // bukan untuk keranjang, dan kolom di dalamnya sudah punya aturannya sendiri.
+  if (!scanOverlay.classList.contains('is-hidden')) return true;
+  return !!document.querySelector('.modal.show');
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.altKey || e.metaKey) { tetesScanner = ''; return; }
+  const target = e.target;
+  if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' || target.isContentEditable)) { tetesScanner = ''; return; }
+  if (scannerSedangDipakai()) { tetesScanner = ''; return; }
+  const sekarang = Date.now();
+  if (e.key === 'Enter' || e.key === 'Tab') {
+    const kode = tetesScanner;
+    tetesScanner = '';
+    // Enter = sufiks yang benar; Tab ikut diterima karena sebagian scanner dikirim dengan
+    // sufiks Tab dan kasir tidak perlu tahu itu.
+    if (kode.length >= PANJANG_MIN_SCAN) { if (e.key === 'Enter') e.preventDefault(); terimaScanScanner(kode); }
+    return;
+  }
+  if (e.key.length !== 1) { tetesScanner = ''; return; }
+  if (tetesScanner && sekarang - waktuKarakterScanner > JEDA_KARAKTER_SCAN_MAKS) tetesScanner = '';
+  tetesScanner += e.key;
+  waktuKarakterScanner = sekarang;
 });
 
 const branchSwitcher = document.getElementById('branchSwitcher');

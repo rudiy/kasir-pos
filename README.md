@@ -370,6 +370,32 @@ Yang perlu diketahui:
   `Scan dari foto`, dan tombol silang, di halaman kasir maupun produk.
 - Kalau kamera menolak: baris status menyebut sebabnya (izin belum diberikan / kamera dipegang tab
   lain / tidak ada kamera belakang) + tombol **Coba lagi**, bukan sekadar "pakai mode foto".
+
+## Scanner Bluetooth / USB (mode keyboard)
+Scanner genggam seperti "panda" dan sejenisnya tidak punya driver di browser: ia menyamar jadi
+keyboard, hanya mengetik angka lalu mengirim Enter. Karena itu:
+
+- **Mode perangkatnya wajib HID / keyboard.** Di Android dipasangkan sebagai *keyboard*, bukan
+  sebagai "scanner". Mode serial/BLE-COM yang butuh aplikasi pendamping tidak bisa dipakai browser
+  sama sekali — aplikasi ini tidak memakai Web Bluetooth / WebHID / Web Serial.
+- **Sufiks Enter (CR)** yang benar, tapi sufiks Tab juga ikut diterima. Tanpa sufiks apa pun
+  scanner tidak pernah masuk keranjang.
+- **Ketikan scanner ditangkap di mana saja** — tidak perlu mengetuk kolom cari dulu. Di HP kolom
+  itu memang tidak auto-focus, dan sebelum ini scan-nya hilang tanpa suara. Pembedanya kecepatan:
+  minimal 6 karakter dengan jeda antar-karakter di bawah 80 ms = scanner; ketikan manusia
+  (±150-250 ms/karakter) tetap jalur pencarian biasa. Ketikan di kolom mana pun (cari member,
+  jumlah, catatan) tidak pernah direbut, dan layar pemindai kamera atau modal pembayaran yang
+  sedang terbuka tidak ikut kena.
+- **Tiap scan = +1 qty.** Beli tiga barang yang sama = discan tiga kali. Satu tarikan yang tidak
+  sengaja terkirim dua kali (kode sama dalam < 250 ms) tetap dihitung satu.
+- **Hasilnya ada kabarnya**, bukan dialog yang menahan layar: baris di bawah kolom cari
+  (`#scannerPesan`) menunjukkan `+ 1 ADAPTOR Rp 17.000` (hijau) atau sebab penolakannya (merah),
+  dengan bunyi yang sama dengan pemindai kamera.
+- Yang dicocokkan tetap hanya produk se-cabang yang stoknya > 0 dan sudah ter-render di halaman,
+  jadi barcode barang stok habis menjawab "tidak ada di produk cabang ini".
+- Kode harus sama seperti yang tersimpan: EAN-13 13 digit apa adanya. Satu angka depan yang
+  hilang masih kena (pencocokan substring, selama kandidatnya satu), tapi `0` di depan EAN-13
+  atau angka ekstra di belakang tidak.
   Lihat tabel pemetaan error di atas untuk langkah di Chrome HP.
 
 ## Kategori produk
