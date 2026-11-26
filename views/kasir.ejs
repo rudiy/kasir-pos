@@ -625,9 +625,14 @@ let pemindai = null;
 let pemindaiJalan = false;
 let kodeTerakhir = '';
 let waktuKodeTerakhir = 0;
-// Satu barcode yang dibiarkan di depan kamera terbaca berulang kali (10 fps); tanpa jeda ini
-// 1 sachet jadi 10 sachet di keranjang.
-const JEDA_ULANG_SCAN = 2200;
+let frameTanpaKode = 0;
+// Penghitung ulang barcode yang sama memakai "barang keluar bingkai", bukan jam buta 2,2 detik.
+// Viewfinder membaca 10 frame per detik, jadi satu barcode yang dibiarkan menempel tetap satu
+// item (itu tugas FRAME_TANPA_KODE_MIN), sementara dua barang identik yang diangkat lalu ditempel
+// ulang langsung dihitung lagi. JEDA_MIN_SCAN menahan hitungan palsu ketika kode sesaat tidak
+// terbaca (HP goyang, kurang cahaya): tiga frame kosong hanyalah 300 ms.
+const FRAME_TANPA_KODE_MIN = 3;
+const JEDA_MIN_SCAN = 500;
 let nada = null;
 
 function bisaViewfinder() {
@@ -676,36 +681,70 @@ function tandaModeScan(modeFoto) {
     : '';
 }
 
-function bipScan() {
+// AudioContext harus lahir dari ketukan tombol. Kalau ia baru dibuat di dalam callback hasil
+// kamera - tanpa user activation - Chrome Android menyimpannya dalam keadaan suspended dan tidak
+// pernah bangun sendiri: scan tercatat di keranjang tapi tidak pernah berbunyi.
+function siapkanAudio() {
   try {
     nada = nada || new (window.AudioContext || window.webkitAudioContext)();
-    const o = nada.createOscillator(), g = nada.createGain();
-    o.type = 'square';
-    o.frequency.value = 1180;
-    g.gain.setValueAtTime(0.0001, nada.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.07, nada.currentTime + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, nada.currentTime + 0.13);
-    o.connect(g);
-    g.connect(nada.destination);
-    o.start();
-    o.stop(nada.currentTime + 0.14);
+    if (nada.state === 'suspended') nada.resume();
   } catch (err) { /* perangkat tanpa output audio: getar tetap dicoba */ }
+}
+
+function nadaTunggal(freq, mulai, durasi, volume) {
+  const o = nada.createOscillator(), g = nada.createGain();
+  o.type = 'sine';
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, nada.currentTime + mulai);
+  g.gain.exponentialRampToValueAtTime(volume, nada.currentTime + mulai + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, nada.currentTime + mulai + durasi);
+  o.connect(g);
+  g.connect(nada.destination);
+  o.start(nada.currentTime + mulai);
+  o.stop(nada.currentTime + mulai + durasi + 0.01);
+}
+
+// "Tiit" scanner piezo: dua ketukan pendek di daerah 2,6 kHz. Sebelumnya 1180 Hz gelombang square
+// pada gain 0,07 - itu dengung pelan yang di HP hampir tidak terdengar di antara suara toko.
+function bipScan() {
+  siapkanAudio();
+  if (!nada) return;
+  try { nadaTunggal(2600, 0, 0.05, 0.28); nadaTunggal(1900, 0.06, 0.05, 0.24); } catch (err) {}
   if (navigator.vibrate) { try { navigator.vibrate(45); } catch (err) {} }
+}
+
+// Barcode yang terbaca tapi ditolak (tidak dikenal, stok habis, cocok dengan banyak produk) ikut
+// berbunyi - tanpa itu kasir mengira kameranya mati, bukan nomornya yang belum ada di cabang ini.
+function bipTolak() {
+  siapkanAudio();
+  if (!nada) return;
+  try { nadaTunggal(760, 0, 0.06, 0.22); nadaTunggal(760, 0.13, 0.06, 0.22); } catch (err) {}
+  if (navigator.vibrate) { try { navigator.vibrate([30, 70, 30]); } catch (err) {} }
+}
+
+// Dipanggil pustaka untuk tiap frame yang tidak memuat barcode: inilah sinyal "barangnya sudah
+// diangkat", yang membuat kode yang sama boleh dihitung lagi - bukan timer buta.
+function padaFrameKosong() {
+  if (frameTanpaKode < FRAME_TANPA_KODE_MIN) frameTanpaKode++;
 }
 
 // Hasil scan masuk lewat prosesKode(), jalur yang sama dengan Enter dari scanner USB, jadi
 // pemindai kamera tidak punya aturan sendiri soal barcode kembar atau stok habis.
-function padaKodeScan(kode) {
+// lewatPotret = true dipakai untuk hasil foto: kasir memotret satu per satu, tiap potret adalah
+// satu niat, jadi tidak perlu menunggu bingkai kosong dulu.
+function padaKodeScan(kode, lewatPotret) {
   const bersih = String(kode || '').trim();
   if (!bersih) return;
   const sekarang = Date.now();
-  if (bersih === kodeTerakhir && sekarang - waktuKodeTerakhir < JEDA_ULANG_SCAN) return;
+  if (!lewatPotret && bersih === kodeTerakhir
+    && (frameTanpaKode < FRAME_TANPA_KODE_MIN || sekarang - waktuKodeTerakhir < JEDA_MIN_SCAN)) return;
   kodeTerakhir = bersih;
   waktuKodeTerakhir = sekarang;
+  frameTanpaKode = 0;
   const hasil = prosesKode(bersih, true);
-  if (hasil.status === 'stok-habis') { statusScan('Stok ' + hasil.produk.name + ' tinggal ' + hasil.stok + '.', 'gagal'); return; }
-  if (hasil.status === 'tidak-ada') { statusScan('Barcode ' + bersih + ' tidak ada di produk cabang ini.', 'gagal'); return; }
-  if (hasil.status === 'banyak') { statusScan('"' + bersih + '" cocok dengan ' + hasil.jumlah + ' produk - ketuk kartunya.', 'gagal'); return; }
+  if (hasil.status === 'stok-habis') { bipTolak(); statusScan('Stok ' + hasil.produk.name + ' tinggal ' + hasil.stok + '.', 'gagal'); return; }
+  if (hasil.status === 'tidak-ada') { bipTolak(); statusScan('Barcode ' + bersih + ' tidak ada di produk cabang ini.', 'gagal'); return; }
+  if (hasil.status === 'banyak') { bipTolak(); statusScan('"' + bersih + '" cocok dengan ' + hasil.jumlah + ' produk - ketuk kartunya.', 'gagal'); return; }
   bipScan();
   statusScan('+ ' + hasil.qty + '  ' + hasil.produk.name + '   Rp ' + formatter.format(hasil.produk.price_sell * hasil.qty), 'ok');
 }
@@ -726,8 +765,14 @@ async function hentikanViewfinder() {
 }
 
 async function mulaiViewfinder() {
+  // Nadanya disiapkan di sini, selagi fungsi ini masih berada di dalam ketukan tombol: inilah
+  // satu-satunya kesempatan AudioContext diterima browser sebelum kamera mengambil alih.
+  siapkanAudio();
   tampilkanOverlay(false);
   statusScan('Menyiapkan kamera...');
+  // Sesi viewfinder baru selalu mulai dari nol, termasuk hitungan frame kosongnya.
+  kodeTerakhir = '';
+  frameTanpaKode = 0;
   // Ditanya sendiri sebelum pustaka dipakai: html5-qrcode menolak dengan string generik
   // ("Camera failed to start") dan membuang nama error aslinya, jadi tanpa pertanyaan langsung
   // ini layar hanya bilang "tidak bisa dibuka" tanpa pernah tahu kenapa.
@@ -750,7 +795,7 @@ async function mulaiViewfinder() {
         },
         rememberLastUsedCamera: true
       },
-      padaKodeScan, () => { /* frame tanpa kode: bukan error, biarkan menunggu */ });
+      padaKodeScan, padaFrameKosong);
     pemindaiJalan = true;
     statusScan('');
   } catch (err) {
@@ -798,6 +843,7 @@ function sebabKamera(err) {
 // karena satu izin kamera, padahal potret selalu bisa dipakai.
 function turunKeModeFoto(pesan) {
   kodeTerakhir = '';
+  frameTanpaKode = 0;
   tampilkanOverlay(true);
   scanOverlay.classList.add('scan-gagal');
   statusScan(pesan + ' Potret tetap bisa dipakai.', 'gagal');
@@ -819,6 +865,9 @@ function mulaiModeFoto() {
     alert('Pustaka pemindai belum ada di perangkat ini. Buka halaman ini sekali saat server kasir hidup (agar asetnya terunduh), lalu coba lagi.');
     return;
   }
+  siapkanAudio();
+  kodeTerakhir = '';
+  frameTanpaKode = 0;
   tampilkanOverlay(true);
   if (pemindaiJalan) hentikanViewfinder();
   statusScan('Kamera HP belum terbuka? Ketuk "Potret ulang".');
@@ -833,7 +882,8 @@ async function padaFotoSelesai(ev) {
   statusScan('Membaca foto ' + berkas.name + '...');
   try {
     const kode = await wadahPemindai().scanFile(berkas, false);
-    padaKodeScan(kode);
+    // Satu potret = satu niat: tidak perlu menunggu bingkai kosong seperti viewfinder.
+    padaKodeScan(kode, true);
   } catch (err) {
     statusScan('Barcode tidak terbaca dari foto itu. Potret lebih dekat, tegak lurus, dan jangan sampai ujung garis terpotong.', 'gagal');
   }
@@ -843,6 +893,7 @@ function tutupPemindai() {
   scanOverlay.classList.add('is-hidden');
   statusScan('');
   kodeTerakhir = '';
+  frameTanpaKode = 0;
   hentikanViewfinder();
 }
 

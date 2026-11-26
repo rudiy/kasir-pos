@@ -311,13 +311,26 @@ jadi aturannya tidak bercabang: barcode sama persis menang, satu-satunya yang co
 **masuk keranjang** (tanpa konfirmasi), lebih dari satu hanya **menyaring** daftar ("89900000 cocok
 dengan 28 produk - ketuk kartunya."), dan yang tidak dikenal hanya memunculkan baris status merah,
 bukan alert — alert di atas layar pemindai membuat scan berikutnya terkunci. Umpan baliknya baris
-status hijau `+ 1 KABLET 3M Rp 8.000` + bip 1180 Hz + `navigator.vibrate(45)`; perangkat tanpa
-speaker tetap mendapat getaran.
+status hijau `+ 1 KABLET 3M Rp 8.000` + **"tiit" dua nada** (`nadaTunggal(2600…)` lalu
+`nadaTunggal(1900…)`, ±110 ms) + `navigator.vibrate(45)`; perangkat tanpa speaker tetap dapat
+getaran. Barcode yang terbaca tapi **ditolak** (tidak dikenal, stok habis, cocok dengan banyak
+produk) berbunyi dua ketukan rendah 760 Hz lewat `bipTolak()` — tanpa itu kasir mengira kameranya
+mati, bukan nomornya yang belum ada di cabang ini. `AudioContext`-nya dibangun dan di-`resume()`
+dari dalam `mulaiViewfinder()`/`mulaiModeFoto()`, yaitu masih di dalam ketukan tombol: kalau ia
+baru dibuat di callback hasil kamera, Chrome Android menyimpannya `suspended` dan scan tidak pernah
+berbunyi sama sekali.
 
-Satu barcode yang dibiarkan di depan kamera terbaca ulang 10 kali per detik, jadi ada
-`JEDA_ULANG_SCAN = 2200` ms untuk kode yang sama: tiga scan berturut-turut dari berkas yang sama
-hanya menambah satu item (terukur qty 1 → 2, bukan → 4). Stok yang sudah penuh dilaporkan lewat
-baris status ("Stok KABLET 3M tinggal 41."), bukan dialog.
+Satu barcode yang dibiarkan di depan kamera terbaca ulang 10 kali per detik, jadi perhitungan
+ulang kode yang sama **tidak lagi memakai jam buta** (dulu `JEDA_ULANG_SCAN = 2200` ms — scan
+kedua barang identik terasa hilang dan sunyi). Sekarang kode yang sama diterima lagi setelah dua
+syarat: minimal `FRAME_TANPA_KODE_MIN = 3` frame berturut-turut tidak memuat kode (callback
+`padaFrameKosong`, ±300 ms pada 10 fps) **dan** sudah lewat `JEDA_MIN_SCAN = 500` ms sejak hitungan
+terakhir. Terukur pada halaman kasir: barcode ditempel terus-menerus 30 pembacaan (3 detik) →
+qty tetap 1; barang diangkat lalu ditempel lagi → diterima tepat pada **500 ms** percobaan
+(100/200/300/400 ms ditahan), jadi dua barang identik beruntun 4,4× lebih cepat daripada aturan
+lama; HP goyang sehingga kode hilang 120 ms lalu terbaca lagi → tetap satu item. Satu potret pada
+mode foto selalu dihitung (tidak menunggu bingkai kosong) karena memotret adalah satu niat.
+Stok yang sudah penuh dilaporkan lewat baris status ("Stok KABLET 3M tinggal 41."), bukan dialog.
 
 Kamera dimatikan lewat `stop()+clear()` saat overlay ditutup (tombol X atau **Escape**) dan lewat
 `pagehide` saat halaman ditinggalkan — kamera yang tertinggal menyala menguras baterai HP dan
@@ -338,6 +351,9 @@ Yang perlu diketahui:
 - **Butuh `https://` untuk scan terus-menerus**, sama seperti di kasir. Kalau halaman dibuka lewat
   `http://192.168.x.x:3000`, tombolnya langsung jatuh ke mode potret (kamera bawaan HP memotret,
   fotonya dibaca) — tetap jalan, hanya satu potret per barcode.
+- **Berbunyi "tiit" juga**, sama seperti layar kasir: dua nada saat kode masuk ke kolom, dua
+  ketukan rendah saat barcode sudah dipakai produk lain (`bipScan()`/`bipTolak()` juga dipasang di
+  halaman ini, dan `AudioContext`-nya dibuka dari ketukan tombol, bukan dari callback kamera).
 - **Barcode yang sudah dipakai tidak lagi berakhir di halaman 500.** `products.barcode` ber-UNIQUE
   dan `/produk/add` membalas "Gagal: Barcode sudah digunakan!" — sekarang tabrakannya dikenali di
   halaman (daftar produknya memang sudah dirender di situ) dan menawarkan dua pilihan: **OK**

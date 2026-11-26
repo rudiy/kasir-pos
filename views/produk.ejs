@@ -301,6 +301,44 @@ const scanFoto = document.getElementById('scanFoto');
 const kolomBarcode = document.getElementById('add_product_barcode');
 
 let pemindai = null;
+let nada = null;
+
+// "Tiit" seperti scanner rakitan, supaya barcode yang masuk ke kolom terdengar dan tidak perlu
+// melirik layar. Bentuknya sengaja sama dengan bipScan() di views/kasir.ejs: kalau salah satunya
+// diubah, gerbang di scratch-kasir/cek-sintaks.js menegur.
+function siapkanAudio() {
+  try {
+    nada = nada || new (window.AudioContext || window.webkitAudioContext)();
+    if (nada.state === 'suspended') nada.resume();
+  } catch (err) { /* perangkat tanpa audio: getar tetap dicoba */ }
+}
+
+function nadaTunggal(freq, mulai, durasi, volume) {
+  const o = nada.createOscillator(), g = nada.createGain();
+  o.type = 'sine';
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, nada.currentTime + mulai);
+  g.gain.exponentialRampToValueAtTime(volume, nada.currentTime + mulai + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, nada.currentTime + mulai + durasi);
+  o.connect(g);
+  g.connect(nada.destination);
+  o.start(nada.currentTime + mulai);
+  o.stop(nada.currentTime + mulai + durasi + 0.01);
+}
+
+function bipScan() {
+  siapkanAudio();
+  if (!nada) return;
+  try { nadaTunggal(2600, 0, 0.05, 0.28); nadaTunggal(1900, 0.06, 0.05, 0.24); } catch (err) {}
+  if (navigator.vibrate) { try { navigator.vibrate(45); } catch (err) {} }
+}
+
+function bipTolak() {
+  siapkanAudio();
+  if (!nada) return;
+  try { nadaTunggal(760, 0, 0.06, 0.22); nadaTunggal(760, 0.13, 0.06, 0.22); } catch (err) {}
+  if (navigator.vibrate) { try { navigator.vibrate([30, 70, 30]); } catch (err) {} }
+}
 
 function statusScan(teks, jenis) {
   scanStatus.textContent = teks || '';
@@ -342,6 +380,9 @@ function tampilkanOverlay(modeFoto) {
 }
 
 async function bukaPemindaiBarcode() {
+  // Nadanya diminta selagi fungsi ini masih turunan ketukan tombol; di dalam callback kamera
+  // browser sudah tidak mau lagi mengizinkan AudioContext baru.
+  siapkanAudio();
   if (!siapViewfinder()) { scanDariFoto(); return; }
   tampilkanOverlay(false);
   statusScan('Menyiapkan kamera...');
@@ -400,6 +441,7 @@ function scanDariFoto() {
     return;
   }
   tampilkanOverlay(true);
+  siapkanAudio();
   if (pemindai) hentikanPemindai();
   statusScan('Kamera HP belum terbuka? Ketuk "Potret ulang".');
   scanFoto.click();
@@ -427,6 +469,7 @@ function isiBarcode(bersih) {
   const lama = SUDAH_ADA.find(x => x.barcode === bersih);
   if (lama) { tabrakBarcode(lama); return; }
   kolomBarcode.value = bersih;
+  bipScan();
   // Kolom nama berikutnya: yang mengetuk scanner biasanya lanjut mengetik nama, tidak perlu
   // mencari kolomnya dulu.
   const nama = document.querySelector('#modalAddProduct [name="name"]');
@@ -435,6 +478,7 @@ function isiBarcode(bersih) {
 
 // Tabrakan kode diselesaikan di sini, bukan di server (server hanya balas halaman 500).
 function tabrakBarcode(lama) {
+  bipTolak();
   const lanjut = window.confirm('Barcode ' + lama.barcode + ' sudah dipakai "' + lama.name + '".\n\n'
     + 'OK = buka produk itu untuk diedit (satu kode hanya boleh untuk satu produk).\n'
     + 'Batal = kolom barcode diisi kode acak baru.');
